@@ -2,7 +2,7 @@
 
 A browser-based, interactive Java code visualizer that lets you write, compile, and step through Java programs line-by-line — all running entirely in the browser with no backend server required.
 
-Built as a single React component with a custom JavaScript-based Java interpreter, inspired by tools like [Python Tutor](https://pythontutor.com/).
+Built as a single React component with a custom JavaScript-based Java interpreter.
 
 ![Dark Theme](https://img.shields.io/badge/theme-dark-0d1117?style=flat-square)
 ![Light Theme](https://img.shields.io/badge/theme-light-ffffff?style=flat-square)
