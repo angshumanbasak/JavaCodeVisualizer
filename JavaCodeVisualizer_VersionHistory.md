@@ -158,7 +158,7 @@ Fixed cursor misalignment after font size increase.
 
 ---
 
-### v12.0 (Final) — Copy/Selection Fix (Native Selection Restored)
+### v12.0 — Copy/Selection Fix (Native Selection Restored)
 **Lines:** ~2,901 | **Date:** May 28, 2026
 
 Fixed word-level copy not working — selecting a single word was highlighting the entire line and copying the full line content.
@@ -172,6 +172,37 @@ Fixed word-level copy not working — selecting a single word was highlighting t
   - Removed line-level selection background color logic from overlay
 - **Why this works now** — The cursor alignment fixes from v11.0 (ligature disabling, font sync, explicit font rendering) mean the native textarea selection now aligns properly with the visible overlay code, making the custom system unnecessary
 - Double-click to select a word, drag to select partial text, and Cmd/Ctrl+C copies exactly what is selected
+
+---
+
+### v13.0 — Interpreter Bug Fixes (Chained Subtraction + Type Cast)
+**Lines:** ~2,927 | **Date:** May 28, 2026
+
+Fixed two expression evaluator bugs that caused Bubble Sort to produce unsorted output and Array Sum to show wrong average.
+
+- **Bug 1 — Chained subtraction:** `n - i - 1` returned `undefined` because `splitOnOperator(expr, '-')` produced 3 parts but the handler only accepted exactly 2 (`parts.length === 2`). The inner for loop condition `j < n - i - 1` was always `false`, so the swap code never executed. Fix: subtraction handler now processes any number of parts left-to-right using a loop
+- **Bug 2 — Type cast precedence:** `(double) sum / numbers.length` was parsed as `(double) (sum / numbers.length)` — integer division happened first (`21 / 5 = 4`), then the cast (`4.0`). Average showed `4` instead of `4.2`, and the conditional incorrectly printed "Below threshold." Fix: cast handler now detects arithmetic operators after the cast target and applies the cast to only the first operand before performing the operation (`21.0 / 5 = 4.2`)
+- All 8 built-in examples verified working after fixes
+
+---
+
+### v14.0 (Final) — Example Programs Renamed with Descriptive Class Names
+**Lines:** ~2,928 | **Date:** May 28, 2026
+
+Replaced `public class Main` in all 8 built-in example programs with descriptive class names.
+
+- **ArraySumAverage** — Array Sum & Average
+- **BubbleSort** — Bubble Sort
+- **Fibonacci** — Fibonacci (Recursive)
+- **Factorial** — Factorial (Recursive)
+- **BinarySearch** — Binary Search
+- **StringReversal** — String Reversal
+- **FizzBuzz** — FizzBuzz
+- **SelectionSort** — Selection Sort
+- File label now shows `BubbleSort.java`, `Fibonacci.java`, etc. instead of `Main.java`
+- Call Stack tab shows class-contextual names (e.g. `Fibonacci.main(String[] args)`)
+- The `derivedFileName` logic (from v8.0) automatically picks up the new class names
+- All 8 examples tested and verified working with renamed classes
 
 ---
 
@@ -191,3 +222,5 @@ Fixed word-level copy not working — selecting a single word was highlighting t
 | v10.0 | Fira Code font, 16px size, 28px line height | ~2,921 |
 | v11.0 | Cursor alignment fix (ligatures disabled, font sync) | ~2,931 |
 | v12.0 | Copy/selection fix (native selection restored) | ~2,901 |
+| v13.0 | Interpreter fixes (chained subtraction + type cast) | ~2,927 |
+| v14.0 | Example programs renamed with descriptive class names | ~2,928 |
