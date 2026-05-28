@@ -1389,7 +1389,7 @@ class JavaInterpreter {
 // ============================================================
 
 const EXAMPLES = {
-  'Array Sum & Average': `public class Main {
+  'Array Sum & Average': `public class ArraySumAverage {
     public static void main(String[] args) {
         // Variable declarations
         int sum = 0;
@@ -1413,7 +1413,7 @@ const EXAMPLES = {
         }
     }
 }`,
-  'Bubble Sort': `public class Main {
+  'Bubble Sort': `public class BubbleSort {
     public static void main(String[] args) {
         int[] arr = {64, 34, 25, 12, 22, 11, 90};
         int n = arr.length;
@@ -1436,7 +1436,7 @@ const EXAMPLES = {
         }
     }
 }`,
-  'Fibonacci (Recursive)': `public class Main {
+  'Fibonacci (Recursive)': `public class Fibonacci {
     public static int fibonacci(int n) {
         if (n <= 1) {
             return n;
@@ -1445,7 +1445,7 @@ const EXAMPLES = {
     }
 
     public static void main(String[] args) {
-        int count = 8;
+        int count = 3;
         System.out.println("Fibonacci sequence:");
         for (int i = 0; i < count; i++) {
             int result = fibonacci(i);
@@ -1453,7 +1453,7 @@ const EXAMPLES = {
         }
     }
 }`,
-  'Factorial (Recursive)': `public class Main {
+  'Factorial (Recursive)': `public class Factorial {
     public static int factorial(int n) {
         if (n <= 1) {
             return 1;
@@ -1468,7 +1468,7 @@ const EXAMPLES = {
         }
     }
 }`,
-  'Binary Search': `public class Main {
+  'Binary Search': `public class BinarySearch {
     public static void main(String[] args) {
         int[] arr = {2, 5, 8, 12, 16, 23, 38, 45, 67, 91};
         int target = 23;
@@ -1498,7 +1498,7 @@ const EXAMPLES = {
         }
     }
 }`,
-  'String Reversal': `public class Main {
+  'String Reversal': `public class StringReversal {
     public static void main(String[] args) {
         String original = "Hello, World!";
         String reversed = "";
@@ -1515,7 +1515,7 @@ const EXAMPLES = {
         System.out.println("Reversed: " + reversed);
     }
 }`,
-  'FizzBuzz': `public class Main {
+  'FizzBuzz': `public class FizzBuzz {
     public static void main(String[] args) {
         for (int i = 1; i <= 20; i++) {
             if (i % 3 == 0 && i % 5 == 0) {
@@ -1530,7 +1530,7 @@ const EXAMPLES = {
         }
     }
 }`,
-  'Selection Sort': `public class Main {
+  'Selection Sort': `public class SelectionSort {
     public static void main(String[] args) {
         int[] arr = {29, 10, 14, 37, 13};
         int n = arr.length;
