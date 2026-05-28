@@ -531,9 +531,19 @@ class JavaInterpreter {
     if (expr === 'false') return false;
     if (expr === 'null') return null;
     
-    // String literal
+    // String literal — must be a single quoted string, not "str" + expr + "str"
     if (expr.startsWith('"') && expr.endsWith('"')) {
-      return expr.slice(1, -1).replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+      // Find the actual end of the first string literal
+      let endIdx = -1;
+      for (let si = 1; si < expr.length; si++) {
+        if (expr[si] === '\\') { si++; continue; }
+        if (expr[si] === '"') { endIdx = si; break; }
+      }
+      if (endIdx === expr.length - 1) {
+        // The entire expression is one string literal
+        return expr.slice(1, -1).replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+      }
+      // Otherwise it's something like "str" + expr + "str" — fall through to concat handler
     }
     
     // Char literal
@@ -755,11 +765,19 @@ class JavaInterpreter {
         if (this.inputIndex >= this.inputQueue.length) {
           const err = new Error('__INPUT_REQUIRED__');
           err.type = 'input_required';
-          err.inputType = method; // nextInt, nextDouble, nextLine, next
+          err.inputType = method;
           err.line = this.currentLine;
           throw err;
         }
         const rawInput = this.inputQueue[this.inputIndex++];
+        // Append the user's input to the current output line (the prompt)
+        if (this.output.length > 0) {
+          this.output[this.output.length - 1] += rawInput;
+        } else {
+          this.output.push(rawInput);
+        }
+        // Start a new line (simulates user pressing Enter)
+        this.output.push('');
         if (method === 'nextInt') return parseInt(rawInput, 10);
         if (method === 'nextDouble' || method === 'nextFloat') return parseFloat(rawInput);
         if (method === 'nextLine') return rawInput;
@@ -1554,6 +1572,48 @@ const EXAMPLES = {
             System.out.print(arr[i] + " ");
         }
         System.out.println("");
+    }
+}`,
+  'Grade Calculator (Scanner)': `import java.util.Scanner;
+
+public class GradeCalculator {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Enter student name: ");
+        String name = scanner.nextLine();
+
+        System.out.print("Enter number of subjects: ");
+        int subjects = scanner.nextInt();
+
+        int total = 0;
+        for (int i = 1; i <= subjects; i++) {
+            System.out.print("Enter marks for subject " + i + ": ");
+            int marks = scanner.nextInt();
+            total += marks;
+        }
+
+        System.out.println("--- Report Card ---");
+        System.out.println("Student: " + name);
+        System.out.println("Total: " + total);
+        System.out.println("Average: " + (double) total / subjects);
+
+        double average = (double) total / subjects;
+        if (average >= 90) {
+            System.out.println("Grade: A+");
+        } else if (average >= 80) {
+            System.out.println("Grade: A");
+        } else if (average >= 70) {
+            System.out.println("Grade: B");
+        } else if (average >= 60) {
+            System.out.println("Grade: C");
+        } else if (average >= 50) {
+            System.out.println("Grade: D");
+        } else {
+            System.out.println("Grade: F");
+        }
+
+        scanner.close();
     }
 }`
 };
@@ -2798,16 +2858,9 @@ export default function JavaCodeVisualizer() {
                         {isRunning ? 'No output yet.' : 'Run your code to see output.'}
                       </span>
                     ) : (
-                      <>
-                        {currentOutput.map((line, idx) => (
-                          <div key={idx} style={{ color: t.textBright }}>{line}</div>
-                        ))}
-                        {userInputs.map((input, idx) => (
-                          <div key={`input-${idx}`} style={{ color: t.green }}>
-                            <span style={{ color: t.textMuted }}>› </span>{input}
-                          </div>
-                        ))}
-                      </>
+                      currentOutput.map((line, idx) => (
+                        <div key={idx} style={{ color: t.textBright }}>{line}</div>
+                      ))
                     )}
                   </div>
                 </div>
