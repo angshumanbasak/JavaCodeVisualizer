@@ -1998,30 +1998,6 @@ export default function JavaCodeVisualizer() {
 
   const displayFileName = activeFileName || derivedFileName;
 
-  // Selection tracking for custom highlight
-  const [selRange, setSelRange] = useState({ start: -1, end: -1 });
-
-  const handleSelect = useCallback(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const { selectionStart, selectionEnd } = ta;
-    if (selectionStart === selectionEnd) {
-      setSelRange({ start: -1, end: -1 });
-    } else {
-      // Convert char offsets to line numbers
-      const text = ta.value;
-      let startLine = 0, endLine = 0, pos = 0;
-      const allLines = text.split('\n');
-      for (let i = 0; i < allLines.length; i++) {
-        const lineEnd = pos + allLines[i].length;
-        if (pos <= selectionStart && selectionStart <= lineEnd) startLine = i;
-        if (pos <= selectionEnd - 1 && selectionEnd - 1 <= lineEnd) { endLine = i; break; }
-        pos = lineEnd + 1; // +1 for newline
-      }
-      setSelRange({ start: startLine, end: endLine });
-    }
-  }, []);
-
   // Handle keyboard in textarea
   const handleKeyDown = (e) => {
     if (e.key === 'Tab') {
@@ -2310,11 +2286,11 @@ export default function JavaCodeVisualizer() {
           text-rendering: auto;
         }
         .editor-textarea::selection {
-          background: transparent;
+          background: rgba(56,139,253,0.3);
           color: transparent;
         }
         .editor-textarea::-moz-selection {
-          background: transparent;
+          background: rgba(56,139,253,0.3);
           color: transparent;
         }
         
@@ -2574,7 +2550,6 @@ export default function JavaCodeVisualizer() {
                   const isExecuted = executedLines.has(lineNum);
                   const isError = lineNum === errorLine;
                   const hasBreakpoint = breakpoints.has(lineNum);
-                  const isSelected = selRange.start >= 0 && idx >= selRange.start && idx <= selRange.end;
                   
                   return (
                     <div
@@ -2583,9 +2558,7 @@ export default function JavaCodeVisualizer() {
                         display: 'flex',
                         minHeight: 28,
                         lineHeight: '28px',
-                        background: isSelected
-                          ? (isDark ? 'rgba(56,139,253,0.25)' : 'rgba(9,105,218,0.15)')
-                          : isCurrentLine
+                        background: isCurrentLine
                           ? t.currentLineBg
                           : isError
                           ? t.errorLineBg
@@ -2597,7 +2570,7 @@ export default function JavaCodeVisualizer() {
                       <div
                         className="line-gutter"
                         onClick={() => toggleBreakpoint(lineNum)}
-                        style={{ lineHeight: '28px', fontSize: 12, color: isSelected ? t.accent : isCurrentLine ? t.accent : t.textDim, pointerEvents: 'auto' }}
+                        style={{ lineHeight: '28px', fontSize: 12, color: isCurrentLine ? t.accent : t.textDim, pointerEvents: 'auto' }}
                       >
                         {hasBreakpoint && <div className="breakpoint-dot" />}
                         {!hasBreakpoint && isExecuted && !isCurrentLine && <div className="executed-dot" />}
@@ -2629,11 +2602,8 @@ export default function JavaCodeVisualizer() {
               ref={textareaRef}
               className="editor-textarea"
               value={code}
-              onChange={(e) => { setCode(e.target.value); if (isRunning) handleReset(); setSelRange({ start: -1, end: -1 }); }}
+              onChange={(e) => { setCode(e.target.value); if (isRunning) handleReset(); }}
               onKeyDown={handleKeyDown}
-              onSelect={handleSelect}
-              onMouseUp={handleSelect}
-              onKeyUp={handleSelect}
               onScroll={(e) => {
                 if (overlayScrollRef.current) {
                   overlayScrollRef.current.scrollTop = e.target.scrollTop;
