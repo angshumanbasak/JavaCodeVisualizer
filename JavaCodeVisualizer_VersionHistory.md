@@ -1,6 +1,6 @@
 # Java Code Visualizer — Version History
 
-## Development Timeline (May 23–24, 2026)
+## Development Timeline (May 23–28, 2026)
 
 This document lists every version of `JavaCodeVisualizer.jsx` produced during the iterative development process, along with the changes made in each version.
 
@@ -146,7 +146,7 @@ Changed the code font to Fira Code and increased size.
 
 ---
 
-### v11.0 (Final) — Cursor Alignment Fix
+### v11.0 — Cursor Alignment Fix
 **Lines:** ~2,931 | **Date:** May 24, 2026
 
 Fixed cursor misalignment after font size increase.
@@ -155,6 +155,23 @@ Fixed cursor misalignment after font size increase.
 - **Explicit font rendering** — `letter-spacing: 0px`, `word-spacing: 0px`, `font-feature-settings: normal`, `text-rendering: auto` on both layers
 - **Editor container font reset** — `font: 16px/28px "Fira Code", monospace` on parent div to override inherited `index.css` styles
 - Ensures textarea invisible text and overlay visible text render characters at identical monospace widths
+
+---
+
+### v12.0 (Final) — Copy/Selection Fix (Native Selection Restored)
+**Lines:** ~2,901 | **Date:** May 28, 2026
+
+Fixed word-level copy not working — selecting a single word was highlighting the entire line and copying the full line content.
+
+- **Root cause** — The custom line-level selection system (introduced in v6.0) highlighted entire lines when any text on that line was selected. The native textarea `::selection` was hidden (`background: transparent`), so users couldn't see or copy individual words
+- **Native textarea selection restored** — `::selection` changed from `transparent` back to `rgba(56,139,253,0.3)` with `color: transparent`, enabling proper character/word-level selection highlighting
+- **Custom selection system removed:**
+  - Removed `selRange` state and `handleSelect` callback
+  - Removed `isSelected` variable from overlay line rendering
+  - Removed `onSelect`, `onMouseUp`, `onKeyUp` event handlers from textarea
+  - Removed line-level selection background color logic from overlay
+- **Why this works now** — The cursor alignment fixes from v11.0 (ligature disabling, font sync, explicit font rendering) mean the native textarea selection now aligns properly with the visible overlay code, making the custom system unnecessary
+- Double-click to select a word, drag to select partial text, and Cmd/Ctrl+C copies exactly what is selected
 
 ---
 
@@ -173,3 +190,4 @@ Fixed cursor misalignment after font size increase.
 | v9.0 | Java logo icon (base64 embedded) | ~2,860 |
 | v10.0 | Fira Code font, 16px size, 28px line height | ~2,921 |
 | v11.0 | Cursor alignment fix (ligatures disabled, font sync) | ~2,931 |
+| v12.0 | Copy/selection fix (native selection restored) | ~2,901 |
