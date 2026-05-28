@@ -558,10 +558,34 @@ class JavaInterpreter {
     }
     
     // Type cast: (double) expr, (int) expr
+    // Only capture the next token (variable or number), not the whole remaining expression
     const castMatch = expr.match(/^\((\w+)\)\s*(.+)$/);
     if (castMatch) {
       const castType = castMatch[1];
-      const castVal = this.evaluateExpression(castMatch[2], vars);
+      const restExpr = castMatch[2];
+      
+      // Check if there's an operator after the cast target — e.g. "(double) sum / 5"
+      // In that case, cast only applies to the first operand
+      const opMatch = restExpr.match(/^(\w+(?:\[.+?\])?)\s*([+\-*/%])\s*(.+)$/);
+      if (opMatch) {
+        let castVal = this.evaluateExpression(opMatch[1], vars);
+        if (castType === 'int') castVal = Math.floor(Number(castVal));
+        else if (castType === 'double' || castType === 'float') castVal = Number(castVal);
+        else if (castType === 'char') castVal = String.fromCharCode(Number(castVal));
+        
+        const right = this.evaluateExpression(opMatch[3], vars);
+        const op = opMatch[2];
+        if (op === '+') return castVal + Number(right);
+        if (op === '-') return castVal - Number(right);
+        if (op === '*') return castVal * Number(right);
+        if (op === '/') {
+          if (Number(right) === 0) throw new Error('ArithmeticException: / by zero');
+          return castVal / Number(right);
+        }
+        if (op === '%') return castVal % Number(right);
+      }
+      
+      const castVal = this.evaluateExpression(restExpr, vars);
       if (castType === 'int') return Math.floor(Number(castVal));
       if (castType === 'double' || castType === 'float') return Number(castVal);
       if (castType === 'char') return String.fromCharCode(Number(castVal));
@@ -627,10 +651,12 @@ class JavaInterpreter {
     // Addition and subtraction (only if no string concat was detected)
     for (const op of ['-']) {
       const parts = this.splitOnOperator(expr, op);
-      if (parts.length === 2 && parts[0].trim() !== '') {
-        const left = this.evaluateExpression(parts[0].trim(), vars);
-        const right = this.evaluateExpression(parts[1].trim(), vars);
-        return Number(left) - Number(right);
+      if (parts.length >= 2 && parts[0].trim() !== '') {
+        let result = Number(this.evaluateExpression(parts[0].trim(), vars));
+        for (let pi = 1; pi < parts.length; pi++) {
+          result = result - Number(this.evaluateExpression(parts[pi].trim(), vars));
+        }
+        return result;
       }
     }
     
