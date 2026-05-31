@@ -11,13 +11,13 @@ This document tracks all planned features for the Java Code Visualizer, organize
 - [x] **Line count & character count in status bar**
   Display total lines, character count, and current cursor position (Ln, Col) at the bottom of the editor pane — gives users immediate awareness of code size and cursor location, just like VS Code.
 
-- [ ] **Download code button**
+- [x] **Download code button**
   Add a toolbar button to save the current editor content as a `.java` file to the user's machine — eliminates the need to manually copy-paste code out of the visualizer.
 
-- [ ] **Fullscreen toggle**
+- [x] **Fullscreen toggle**
   Add a button to expand the editor or the entire app to fullscreen mode — provides a distraction-free environment for focused coding and visualization.
 
-- [ ] **Keyboard shortcuts**
+- [x] **Keyboard shortcuts**
   Implement common editor shortcuts: `Cmd/Ctrl+Enter` to Compile & Run, `Cmd/Ctrl+S` to download the file, `Cmd/Ctrl+/` to toggle line comments, `Cmd/Ctrl+Z` / `Cmd/Ctrl+Shift+Z` for undo/redo — accelerates workflow for power users and makes the editor feel professional.
 
 ---
