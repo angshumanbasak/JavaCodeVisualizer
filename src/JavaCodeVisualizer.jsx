@@ -234,7 +234,9 @@ class JavaInterpreter {
     let i = 0;
     
     while (i < bodyLines.length) {
-      const line = bodyLines[i].trim();
+      const rawLine = bodyLines[i].trim();
+      // Strip inline // comments (but not inside string literals)
+      const line = this.stripInlineComment(rawLine);
       const lineNum = startLine + i;
       
       if (!line || line.startsWith('//') || line.startsWith('/*') || line === '{' || line === '}') {
@@ -551,9 +553,10 @@ class JavaInterpreter {
       return expr.slice(1, -1);
     }
     
-    // Number
-    if (/^-?\d+(\.\d+)?$/.test(expr)) {
-      return expr.includes('.') ? parseFloat(expr) : parseInt(expr);
+    // Number (including L/l for long, f/F for float, d/D for double suffixes, underscore separators)
+    if (/^-?\d[\d_]*(\.\d[\d_]*)?[lLfFdD]?$/.test(expr)) {
+      const cleanNum = expr.replace(/[lLfFdD]$/, '').replace(/_/g, '');
+      return cleanNum.includes('.') ? parseFloat(cleanNum) : parseInt(cleanNum);
     }
     
     // Parenthesized expression
@@ -589,7 +592,7 @@ class JavaInterpreter {
         if (op === '-') return castVal - Number(right);
         if (op === '*') return castVal * Number(right);
         if (op === '/') {
-          if (Number(right) === 0) throw new Error('ArithmeticException: / by zero');
+          if (Number(right) === 0 && Number.isInteger(castVal) && (castType === 'int' || castType === 'long' || castType === 'short' || castType === 'byte')) throw new Error('ArithmeticException: / by zero');
           return castVal / Number(right);
         }
         if (op === '%') return castVal % Number(right);
@@ -607,8 +610,16 @@ class JavaInterpreter {
     const concatParts = this.splitOnOperator(expr, '+');
     if (concatParts.length > 1) {
       const values = concatParts.map(p => this.evaluateExpression(p.trim(), vars));
-      if (values.some(v => typeof v === 'string')) {
-        return values.map(v => v === null ? 'null' : v === undefined ? 'undefined' : String(v)).join('');
+      if (values.some(v => typeof v === 'string' || (v && typeof v === 'object' && v.__type__))) {
+        return values.map(v => {
+          if (v === null) return 'null';
+          if (v === undefined) return 'undefined';
+          if (v && typeof v === 'object' && v.__type__ === 'ArrayList') return '[' + v.items.join(', ') + ']';
+          if (v && typeof v === 'object' && v.__type__ === 'HashMap') { const entries = [...v.map.entries()].map(([k, val]) => k + '=' + val); return '{' + entries.join(', ') + '}'; }
+          if (v && typeof v === 'object' && v.__type__ === 'StringBuilder') return v.value;
+          if (Array.isArray(v)) return '[' + v.join(', ') + ']';
+          return String(v);
+        }).join('');
       }
       // Otherwise it's numeric addition - but only if exactly 2 parts or all numeric
       // For more complex expressions, try to evaluate as math
@@ -688,9 +699,19 @@ class JavaInterpreter {
         const right = this.evaluateExpression(parts[1].trim(), vars);
         if (op === '*') return Number(left) * Number(right);
         if (op === '/') {
-          if (Number(right) === 0) throw new Error('ArithmeticException: / by zero');
-          // Check if both are ints
-          if (Number.isInteger(left) && Number.isInteger(right)) return Math.floor(left / right);
+          // Only integer division by zero throws ArithmeticException
+          // Float division by zero produces Infinity/NaN (IEEE 754)
+          const leftText = parts[0].trim();
+          const rightText = parts[1].trim();
+          const hasFloatLiteral = /\d+\.\d*/.test(leftText) || /\d+\.\d*/.test(rightText);
+          if (Number(right) === 0) {
+            if (!hasFloatLiteral && Number.isInteger(Number(left))) {
+              throw new Error('ArithmeticException: / by zero');
+            }
+            return Number(left) / Number(right); // Infinity or NaN
+          }
+          // Integer division (truncates toward zero)
+          if (!hasFloatLiteral && Number.isInteger(left) && Number.isInteger(right)) return Math.floor(left / right);
           return Number(left) / Number(right);
         }
         if (op === '%') return Number(left) % Number(right);
@@ -739,14 +760,54 @@ class JavaInterpreter {
     }
     
     // Property access: name.length, name.length()
-    const propMatch = expr.match(/^(\w+(?:\[.+?\])?)\.(\w+)(\(\))?$/);
+    const propMatch = expr.match(/^(\w+(?:\.\w+)?)\.(\w+)(\(\))?$/);
     if (propMatch && !propMatch[3]) {
-      // Only handle true property access (no parentheses) - method calls with () fall through to methodCallMatch
-      const obj = this.evaluateExpression(propMatch[1], vars);
+      const objName = propMatch[1];
       const prop = propMatch[2];
+      
+      // Static constants
+      if (objName === 'Math' && prop === 'PI') return Math.PI;
+      if (objName === 'Math' && prop === 'E') return Math.E;
+      if (objName === 'Integer' && prop === 'MAX_VALUE') return 2147483647;
+      if (objName === 'Integer' && prop === 'MIN_VALUE') return -2147483648;
+      if (objName === 'Integer' && prop === 'SIZE') return 32;
+      if (objName === 'Integer' && prop === 'BYTES') return 4;
+      if (objName === 'Long' && prop === 'MAX_VALUE') return 9223372036854775807;
+      if (objName === 'Long' && prop === 'MIN_VALUE') return -9223372036854775808;
+      if (objName === 'Double' && prop === 'MAX_VALUE') return Number.MAX_VALUE;
+      if (objName === 'Double' && prop === 'MIN_VALUE') return Number.MIN_VALUE;
+      if (objName === 'Double' && prop === 'POSITIVE_INFINITY') return Infinity;
+      if (objName === 'Double' && prop === 'NEGATIVE_INFINITY') return -Infinity;
+      if (objName === 'Double' && prop === 'NaN') return NaN;
+      if (objName === 'Float' && prop === 'MAX_VALUE') return 3.4028235e+38;
+      if (objName === 'Float' && prop === 'MIN_VALUE') return 1.4e-45;
+      if (objName === 'Float' && prop === 'SIZE') return 32;
+      if (objName === 'Float' && prop === 'BYTES') return 4;
+      if (objName === 'Byte' && prop === 'MAX_VALUE') return 127;
+      if (objName === 'Byte' && prop === 'MIN_VALUE') return -128;
+      if (objName === 'Byte' && prop === 'SIZE') return 8;
+      if (objName === 'Byte' && prop === 'BYTES') return 1;
+      if (objName === 'Short' && prop === 'MAX_VALUE') return 32767;
+      if (objName === 'Short' && prop === 'MIN_VALUE') return -32768;
+      if (objName === 'Short' && prop === 'SIZE') return 16;
+      if (objName === 'Short' && prop === 'BYTES') return 2;
+      if (objName === 'Long' && prop === 'SIZE') return 64;
+      if (objName === 'Long' && prop === 'BYTES') return 8;
+      if (objName === 'Double' && prop === 'SIZE') return 64;
+      if (objName === 'Double' && prop === 'BYTES') return 8;
+      if (objName === 'Boolean' && prop === 'TRUE') return true;
+      if (objName === 'Boolean' && prop === 'FALSE') return false;
+      
+      // Instance property access
+      const obj = this.evaluateExpression(objName, vars);
       if (prop === 'length') {
         if (Array.isArray(obj)) return obj.length;
         if (typeof obj === 'string') return obj.length;
+        if (obj && typeof obj === 'object' && obj.__type__ === 'StringBuilder') return obj.value.length;
+      }
+      if (prop === 'size' && obj && typeof obj === 'object') {
+        if (obj.__type__ === 'ArrayList') return obj.items.length;
+        if (obj.__type__ === 'HashMap') return obj.map.size;
       }
       return undefined;
     }
@@ -786,7 +847,67 @@ class JavaInterpreter {
         return rawInput;
       }
       
+      // java.util.Arrays methods
+      if (obj === 'java.util.Arrays' || obj === 'Arrays') {
+        if (method === 'toString') {
+          const arrVal = args[0];
+          if (Array.isArray(arrVal)) return '[' + arrVal.join(', ') + ']';
+          return String(arrVal);
+        }
+        if (method === 'sort') {
+          const arrVal = args[0];
+          if (Array.isArray(arrVal)) {
+            if (args.length === 3) { const sub = arrVal.slice(args[1], args[2]).sort((a,b) => a-b); for (let ci=0;ci<sub.length;ci++) arrVal[args[1]+ci]=sub[ci]; }
+            else arrVal.sort((a, b) => typeof a === 'string' ? a.localeCompare(b) : a - b);
+          }
+          return;
+        }
+        if (method === 'fill') {
+          const arrVal = args[0];
+          if (Array.isArray(arrVal)) {
+            if (args.length === 4) { for (let ci=args[2];ci<args[3];ci++) arrVal[ci]=args[1]; }
+            else arrVal.fill(args[1]);
+          }
+          return;
+        }
+        if (method === 'copyOf') {
+          const arrVal = args[0];
+          if (Array.isArray(arrVal)) return arrVal.slice(0, args[1]).concat(new Array(Math.max(0, args[1] - arrVal.length)).fill(0));
+          return [];
+        }
+        if (method === 'copyOfRange') {
+          const arrVal = args[0];
+          if (Array.isArray(arrVal)) return arrVal.slice(args[1], args[2]);
+          return [];
+        }
+        if (method === 'equals') {
+          const a = args[0], b = args[1];
+          if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => v === b[i]);
+          return a === b;
+        }
+        if (method === 'deepEquals') {
+          return JSON.stringify(args[0]) === JSON.stringify(args[1]);
+        }
+        if (method === 'binarySearch') {
+          const arrVal = args[0], target = args[1];
+          if (Array.isArray(arrVal)) {
+            let lo = 0, hi = arrVal.length - 1;
+            while (lo <= hi) {
+              const mid = Math.floor((lo + hi) / 2);
+              if (arrVal[mid] === target) return mid;
+              if (arrVal[mid] < target) lo = mid + 1; else hi = mid - 1;
+            }
+            return -(lo + 1);
+          }
+          return -1;
+        }
+        if (method === 'asList') {
+          return { __type__: 'ArrayList', items: Array.isArray(args[0]) ? [...args[0]] : [...args] };
+        }
+      }
+      
       if (obj === 'Math') {
+        // Math methods
         if (method === 'abs') return Math.abs(args[0]);
         if (method === 'max') return Math.max(args[0], args[1]);
         if (method === 'min') return Math.min(args[0], args[1]);
@@ -796,31 +917,292 @@ class JavaInterpreter {
         if (method === 'floor') return Math.floor(args[0]);
         if (method === 'ceil') return Math.ceil(args[0]);
         if (method === 'round') return Math.round(args[0]);
+        if (method === 'log') return Math.log(args[0]);
+        if (method === 'log10') return Math.log10(args[0]);
+        if (method === 'sin') return Math.sin(args[0]);
+        if (method === 'cos') return Math.cos(args[0]);
+        if (method === 'tan') return Math.tan(args[0]);
+        if (method === 'asin') return Math.asin(args[0]);
+        if (method === 'acos') return Math.acos(args[0]);
+        if (method === 'atan') return Math.atan(args[0]);
+        if (method === 'atan2') return Math.atan2(args[0], args[1]);
+        if (method === 'toRadians') return args[0] * (Math.PI / 180);
+        if (method === 'toDegrees') return args[0] * (180 / Math.PI);
+        if (method === 'signum') return Math.sign(args[0]);
+        if (method === 'cbrt') return Math.cbrt(args[0]);
+        if (method === 'exp') return Math.exp(args[0]);
+        if (method === 'hypot') return Math.hypot(args[0], args[1]);
       }
       
-      // String methods
+      // Integer static methods
+      if (obj === 'Integer') {
+        if (method === 'parseInt') return parseInt(args[0], args.length > 1 ? args[1] : 10);
+        if (method === 'valueOf') return parseInt(args[0]);
+        if (method === 'toString') return String(args[0]);
+        if (method === 'toBinaryString') return (args[0] >>> 0).toString(2);
+        if (method === 'toHexString') return (args[0] >>> 0).toString(16);
+        if (method === 'toOctalString') return (args[0] >>> 0).toString(8);
+        if (method === 'compare') return args[0] < args[1] ? -1 : args[0] > args[1] ? 1 : 0;
+        if (method === 'max') return Math.max(args[0], args[1]);
+        if (method === 'min') return Math.min(args[0], args[1]);
+        if (method === 'sum') return args[0] + args[1];
+      }
+      
+      // Long static methods
+      if (obj === 'Long') {
+        if (method === 'parseLong') return parseInt(args[0]);
+        if (method === 'valueOf') return parseInt(args[0]);
+        if (method === 'toString') return String(args[0]);
+        if (method === 'compare') return args[0] < args[1] ? -1 : args[0] > args[1] ? 1 : 0;
+      }
+      
+      // Double static methods
+      if (obj === 'Double') {
+        if (method === 'parseDouble') return parseFloat(args[0]);
+        if (method === 'valueOf') return parseFloat(args[0]);
+        if (method === 'toString') return String(args[0]);
+        if (method === 'isNaN') return isNaN(args[0]);
+        if (method === 'isInfinite') return !isFinite(args[0]);
+        if (method === 'compare') return args[0] < args[1] ? -1 : args[0] > args[1] ? 1 : 0;
+      }
+      
+      // Character static methods
+      if (obj === 'Character') {
+        if (method === 'isLetter') return /[a-zA-Z]/.test(args[0]);
+        if (method === 'isDigit') return /[0-9]/.test(args[0]);
+        if (method === 'isLetterOrDigit') return /[a-zA-Z0-9]/.test(args[0]);
+        if (method === 'isUpperCase') return args[0] === String(args[0]).toUpperCase() && /[a-zA-Z]/.test(args[0]);
+        if (method === 'isLowerCase') return args[0] === String(args[0]).toLowerCase() && /[a-zA-Z]/.test(args[0]);
+        if (method === 'toUpperCase') return String(args[0]).toUpperCase();
+        if (method === 'toLowerCase') return String(args[0]).toLowerCase();
+        if (method === 'isWhitespace') return /\s/.test(args[0]);
+        if (method === 'isAlphabetic') return /[a-zA-Z]/.test(args[0]);
+        if (method === 'compare') return String(args[0]).charCodeAt(0) - String(args[1]).charCodeAt(0);
+        if (method === 'getNumericValue') return parseInt(args[0]);
+      }
+      
+      // String static methods
+      if (obj === 'String') {
+        if (method === 'valueOf') return String(args[0]);
+        if (method === 'join') {
+          const delim = args[0];
+          const parts = args.slice(1);
+          if (parts.length === 1 && Array.isArray(parts[0])) return parts[0].join(delim);
+          return parts.join(delim);
+        }
+        if (method === 'format') {
+          let fmt = args[0];
+          let ai = 1;
+          return fmt.replace(/%[dfs%]/g, (m) => {
+            if (m === '%%') return '%';
+            if (ai < args.length) return String(args[ai++]);
+            return m;
+          });
+        }
+      }
+      
+      // Collections static methods
+      if (obj === 'Collections') {
+        if (method === 'sort') {
+          const list = args[0];
+          if (list && list.__type__ === 'ArrayList') list.items.sort((a, b) => typeof a === 'string' ? a.localeCompare(b) : a - b);
+          return;
+        }
+        if (method === 'reverse') {
+          const list = args[0];
+          if (list && list.__type__ === 'ArrayList') list.items.reverse();
+          return;
+        }
+        if (method === 'max') {
+          const list = args[0];
+          if (list && list.__type__ === 'ArrayList') return Math.max(...list.items);
+          return;
+        }
+        if (method === 'min') {
+          const list = args[0];
+          if (list && list.__type__ === 'ArrayList') return Math.min(...list.items);
+          return;
+        }
+        if (method === 'frequency') {
+          const list = args[0];
+          const val = args[1];
+          if (list && list.__type__ === 'ArrayList') return list.items.filter(x => x === val).length;
+          return 0;
+        }
+        if (method === 'swap') {
+          const list = args[0];
+          if (list && list.__type__ === 'ArrayList') {
+            const temp = list.items[args[1]];
+            list.items[args[1]] = list.items[args[2]];
+            list.items[args[2]] = temp;
+          }
+          return;
+        }
+        if (method === 'fill') {
+          const list = args[0];
+          if (list && list.__type__ === 'ArrayList') list.items.fill(args[1]);
+          return;
+        }
+        if (method === 'unmodifiableList') return args[0];
+      }
+      
+      // System static methods
+      if (obj === 'System') {
+        if (method === 'currentTimeMillis') return Date.now();
+        if (method === 'nanoTime') return Date.now() * 1000000;
+        if (method === 'arraycopy') {
+          const src = args[0], srcPos = args[1], dest = args[2], destPos = args[3], len = args[4];
+          if (Array.isArray(src) && Array.isArray(dest)) {
+            for (let ci = 0; ci < len; ci++) dest[destPos + ci] = src[srcPos + ci];
+          }
+          return;
+        }
+        if (method === 'exit') return;
+      }
+      
+      // String instance methods
       const strVal = this.getVar(obj, vars);
       if (typeof strVal === 'string') {
         if (method === 'length') return strVal.length;
         if (method === 'charAt') return strVal.charAt(args[0]);
         if (method === 'substring') return args.length === 1 ? strVal.substring(args[0]) : strVal.substring(args[0], args[1]);
-        if (method === 'indexOf') return strVal.indexOf(args[0]);
+        if (method === 'indexOf') return args.length === 1 ? strVal.indexOf(args[0]) : strVal.indexOf(args[0], args[1]);
+        if (method === 'lastIndexOf') return args.length === 1 ? strVal.lastIndexOf(args[0]) : strVal.lastIndexOf(args[0], args[1]);
         if (method === 'equals') return strVal === args[0];
+        if (method === 'equalsIgnoreCase') return strVal.toLowerCase() === String(args[0]).toLowerCase();
+        if (method === 'compareTo') return strVal < args[0] ? -1 : strVal > args[0] ? 1 : 0;
+        if (method === 'compareToIgnoreCase') { const a = strVal.toLowerCase(), b = String(args[0]).toLowerCase(); return a < b ? -1 : a > b ? 1 : 0; }
         if (method === 'toUpperCase') return strVal.toUpperCase();
         if (method === 'toLowerCase') return strVal.toLowerCase();
         if (method === 'trim') return strVal.trim();
         if (method === 'contains') return strVal.includes(args[0]);
-        if (method === 'replace') return strVal.replace(args[0], args[1]);
+        if (method === 'replace') return strVal.split(args[0]).join(args[1]);
+        if (method === 'replaceAll') return strVal.replace(new RegExp(args[0], 'g'), args[1]);
+        if (method === 'replaceFirst') return strVal.replace(new RegExp(args[0]), args[1]);
         if (method === 'startsWith') return strVal.startsWith(args[0]);
         if (method === 'endsWith') return strVal.endsWith(args[0]);
         if (method === 'isEmpty') return strVal.length === 0;
+        if (method === 'isBlank') return strVal.trim().length === 0;
         if (method === 'toCharArray') return [...strVal];
+        if (method === 'split') return strVal.split(args[0]);
+        if (method === 'concat') return strVal + args[0];
+        if (method === 'matches') return new RegExp('^' + args[0] + '$').test(strVal);
+        if (method === 'codePointAt') return strVal.codePointAt(args[0]);
+        if (method === 'hashCode') { let h = 0; for (let ci = 0; ci < strVal.length; ci++) h = (Math.imul(31, h) + strVal.charCodeAt(ci)) | 0; return h; }
+        if (method === 'toString') return strVal;
+        if (method === 'valueOf') return strVal;
+        if (method === 'intern') return strVal;
+        if (method === 'getBytes') return [...strVal].map(c => c.charCodeAt(0));
+        if (method === 'repeat') return strVal.repeat(args[0]);
+        if (method === 'strip') return strVal.trim();
+        if (method === 'stripLeading') return strVal.replace(/^\s+/, '');
+        if (method === 'stripTrailing') return strVal.replace(/\s+$/, '');
       }
       
-      // Array methods
+      // ArrayList instance methods
+      const listVal = this.getVar(obj, vars);
+      if (listVal && typeof listVal === 'object' && listVal.__type__ === 'ArrayList') {
+        if (method === 'add') {
+          if (args.length === 2) { listVal.items.splice(args[0], 0, args[1]); }
+          else { listVal.items.push(args[0]); }
+          this.setVar(obj, listVal, vars, 'ArrayList');
+          return true;
+        }
+        if (method === 'get') return listVal.items[args[0]];
+        if (method === 'set') { const old = listVal.items[args[0]]; listVal.items[args[0]] = args[1]; this.setVar(obj, listVal, vars, 'ArrayList'); return old; }
+        if (method === 'remove') {
+          if (typeof args[0] === 'number') { const old = listVal.items.splice(args[0], 1)[0]; this.setVar(obj, listVal, vars, 'ArrayList'); return old; }
+          const idx = listVal.items.indexOf(args[0]);
+          if (idx >= 0) { listVal.items.splice(idx, 1); this.setVar(obj, listVal, vars, 'ArrayList'); return true; }
+          return false;
+        }
+        if (method === 'size') return listVal.items.length;
+        if (method === 'isEmpty') return listVal.items.length === 0;
+        if (method === 'contains') return listVal.items.includes(args[0]);
+        if (method === 'indexOf') return listVal.items.indexOf(args[0]);
+        if (method === 'lastIndexOf') return listVal.items.lastIndexOf(args[0]);
+        if (method === 'clear') { listVal.items = []; this.setVar(obj, listVal, vars, 'ArrayList'); return; }
+        if (method === 'toArray') return [...listVal.items];
+        if (method === 'subList') return { __type__: 'ArrayList', items: listVal.items.slice(args[0], args[1]) };
+        if (method === 'addAll') {
+          const other = args[0];
+          if (other && other.__type__ === 'ArrayList') listVal.items.push(...other.items);
+          else if (Array.isArray(other)) listVal.items.push(...other);
+          this.setVar(obj, listVal, vars, 'ArrayList');
+          return true;
+        }
+        if (method === 'sort') { listVal.items.sort((a, b) => typeof a === 'string' ? a.localeCompare(b) : a - b); this.setVar(obj, listVal, vars, 'ArrayList'); return; }
+        if (method === 'toString') return '[' + listVal.items.join(', ') + ']';
+        if (method === 'forEach') return; // no-op for now
+      }
+      
+      // HashMap instance methods
+      const mapVal = this.getVar(obj, vars);
+      if (mapVal && typeof mapVal === 'object' && mapVal.__type__ === 'HashMap') {
+        if (method === 'put') { const old = mapVal.map.get(args[0]); mapVal.map.set(args[0], args[1]); this.setVar(obj, mapVal, vars, 'HashMap'); return old !== undefined ? old : null; }
+        if (method === 'get') { const v = mapVal.map.get(args[0]); return v !== undefined ? v : null; }
+        if (method === 'getOrDefault') { const v = mapVal.map.get(args[0]); return v !== undefined ? v : args[1]; }
+        if (method === 'remove') { const old = mapVal.map.get(args[0]); mapVal.map.delete(args[0]); this.setVar(obj, mapVal, vars, 'HashMap'); return old !== undefined ? old : null; }
+        if (method === 'containsKey') return mapVal.map.has(args[0]);
+        if (method === 'containsValue') { for (const v of mapVal.map.values()) { if (v === args[0]) return true; } return false; }
+        if (method === 'size') return mapVal.map.size;
+        if (method === 'isEmpty') return mapVal.map.size === 0;
+        if (method === 'clear') { mapVal.map.clear(); this.setVar(obj, mapVal, vars, 'HashMap'); return; }
+        if (method === 'keySet') { return { __type__: 'ArrayList', items: [...mapVal.map.keys()] }; }
+        if (method === 'values') { return { __type__: 'ArrayList', items: [...mapVal.map.values()] }; }
+        if (method === 'entrySet') { return { __type__: 'ArrayList', items: [...mapVal.map.entries()].map(([k, v]) => k + '=' + v) }; }
+        if (method === 'putIfAbsent') { if (!mapVal.map.has(args[0])) { mapVal.map.set(args[0], args[1]); this.setVar(obj, mapVal, vars, 'HashMap'); } return mapVal.map.get(args[0]); }
+        if (method === 'replace') { if (mapVal.map.has(args[0])) { const old = mapVal.map.get(args[0]); mapVal.map.set(args[0], args[1]); this.setVar(obj, mapVal, vars, 'HashMap'); return old; } return null; }
+        if (method === 'toString') { const entries = [...mapVal.map.entries()].map(([k, v]) => k + '=' + v); return '{' + entries.join(', ') + '}'; }
+      }
+      
+      // StringBuilder instance methods
+      const sbVal = this.getVar(obj, vars);
+      if (sbVal && typeof sbVal === 'object' && sbVal.__type__ === 'StringBuilder') {
+        if (method === 'append') { sbVal.value += String(args[0]); this.setVar(obj, sbVal, vars, 'StringBuilder'); return sbVal; }
+        if (method === 'insert') { sbVal.value = sbVal.value.slice(0, args[0]) + String(args[1]) + sbVal.value.slice(args[0]); this.setVar(obj, sbVal, vars, 'StringBuilder'); return sbVal; }
+        if (method === 'delete') { sbVal.value = sbVal.value.slice(0, args[0]) + sbVal.value.slice(args[1]); this.setVar(obj, sbVal, vars, 'StringBuilder'); return sbVal; }
+        if (method === 'deleteCharAt') { sbVal.value = sbVal.value.slice(0, args[0]) + sbVal.value.slice(args[0] + 1); this.setVar(obj, sbVal, vars, 'StringBuilder'); return sbVal; }
+        if (method === 'replace') { sbVal.value = sbVal.value.slice(0, args[0]) + String(args[2]) + sbVal.value.slice(args[1]); this.setVar(obj, sbVal, vars, 'StringBuilder'); return sbVal; }
+        if (method === 'reverse') { sbVal.value = [...sbVal.value].reverse().join(''); this.setVar(obj, sbVal, vars, 'StringBuilder'); return sbVal; }
+        if (method === 'toString') return sbVal.value;
+        if (method === 'length') return sbVal.value.length;
+        if (method === 'charAt') return sbVal.value.charAt(args[0]);
+        if (method === 'substring') return args.length === 1 ? sbVal.value.substring(args[0]) : sbVal.value.substring(args[0], args[1]);
+        if (method === 'indexOf') return sbVal.value.indexOf(args[0]);
+        if (method === 'capacity') return sbVal.value.length + 16;
+        if (method === 'setCharAt') { const arr = [...sbVal.value]; arr[args[0]] = args[1]; sbVal.value = arr.join(''); this.setVar(obj, sbVal, vars, 'StringBuilder'); return; }
+      }
+      
+      // Number wrapper instance methods (Integer, Double, Long, Float, etc.)
+      const numVal = this.getVar(obj, vars);
+      if (typeof numVal === 'number') {
+        if (method === 'intValue') return Math.floor(numVal);
+        if (method === 'doubleValue') return numVal;
+        if (method === 'floatValue') return numVal;
+        if (method === 'longValue') return Math.floor(numVal);
+        if (method === 'shortValue') return numVal & 0xFFFF;
+        if (method === 'byteValue') return numVal & 0xFF;
+        if (method === 'toString') return String(numVal);
+        if (method === 'compareTo') return numVal < args[0] ? -1 : numVal > args[0] ? 1 : 0;
+        if (method === 'equals') return numVal === args[0];
+        if (method === 'hashCode') return numVal | 0;
+      }
+      
+      // Boolean wrapper instance methods
+      if (typeof numVal === 'boolean') {
+        if (method === 'booleanValue') return numVal;
+        if (method === 'toString') return String(numVal);
+        if (method === 'compareTo') return numVal === args[0] ? 0 : numVal ? 1 : -1;
+        if (method === 'equals') return numVal === args[0];
+      }
+      
+      // Array instance methods
       const arrVal = this.getVar(obj, vars);
       if (Array.isArray(arrVal)) {
         if (method === 'length') return arrVal.length;
+        if (method === 'clone') return [...arrVal];
+        if (method === 'toString') return '[' + arrVal.join(', ') + ']';
       }
       
       // User-defined method call
@@ -843,7 +1225,7 @@ class JavaInterpreter {
       }
       
       // Integer.parseInt etc
-      if (funcName === 'Integer' || funcName === 'Double') {
+      if (funcName === 'Integer' || funcName === 'Double' || funcName === 'Long') {
         return undefined;
       }
     }
@@ -902,6 +1284,34 @@ class JavaInterpreter {
     } else {
       vars[name] = { type: type || 'var', value, changed: true };
     }
+  }
+
+  toJavaString(v) {
+    if (v === null || v === undefined) return 'null';
+    if (v && typeof v === 'object' && v.__type__ === 'ArrayList') return '[' + v.items.join(', ') + ']';
+    if (v && typeof v === 'object' && v.__type__ === 'HashMap') { const entries = [...v.map.entries()].map(([k, val]) => k + '=' + val); return '{' + entries.join(', ') + '}'; }
+    if (v && typeof v === 'object' && v.__type__ === 'StringBuilder') return v.value;
+    if (Array.isArray(v)) return '[' + v.join(', ') + ']';
+    return String(v);
+  }
+
+  stripInlineComment(line) {
+    // Remove // comments that are NOT inside string literals
+    let inString = false;
+    let stringChar = '';
+    for (let ci = 0; ci < line.length - 1; ci++) {
+      const ch = line[ci];
+      if (inString) {
+        if (ch === '\\') { ci++; continue; }
+        if (ch === stringChar) inString = false;
+      } else {
+        if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+        else if (ch === '/' && line[ci + 1] === '/') {
+          return line.slice(0, ci).trim();
+        }
+      }
+    }
+    return line;
   }
 
   splitOnOperator(expr, op) {
@@ -1018,12 +1428,108 @@ class JavaInterpreter {
       return;
     }
     
-    // scanner.close() — no-op
+    // ArrayList declaration: ArrayList<Type> name = new ArrayList<>() or new ArrayList<>(initialCollection)
+    const alDeclMatch = code.match(/^(?:ArrayList|List)\s*<[^>]*>\s+(\w+)\s*=\s*new\s+ArrayList\s*<[^>]*>\s*\((.*)?\)\s*$/);
+    if (alDeclMatch) {
+      let items = [];
+      const initExpr = (alDeclMatch[2] || '').trim();
+      if (initExpr) {
+        const initVal = this.evaluateExpression(initExpr, vars);
+        if (initVal && typeof initVal === 'object' && initVal.__type__ === 'ArrayList') {
+          items = [...initVal.items];
+        } else if (Array.isArray(initVal)) {
+          items = [...initVal];
+        }
+      }
+      this.setVar(alDeclMatch[1], { __type__: 'ArrayList', items }, vars, 'ArrayList');
+      return;
+    }
+    
+    // List declaration via Arrays.asList directly: List<Type> name = Arrays.asList(...)
+    const listAsListMatch = code.match(/^(?:List)\s*<[^>]*>\s+(\w+)\s*=\s*(Arrays\.asList\(.+\))$/);
+    if (listAsListMatch) {
+      const initVal = this.evaluateExpression(listAsListMatch[2], vars);
+      if (initVal && typeof initVal === 'object' && initVal.__type__ === 'ArrayList') {
+        this.setVar(listAsListMatch[1], initVal, vars, 'ArrayList');
+      }
+      return;
+    }
+    
+    // HashMap declaration: HashMap<K,V> name = new HashMap<>()
+    const hmMatch = code.match(/^(?:HashMap|Map)\s*<[^>]*>\s+(\w+)\s*=\s*new\s+HashMap\s*<[^>]*>\s*\(\s*\)/);
+    if (hmMatch) {
+      this.setVar(hmMatch[1], { __type__: 'HashMap', map: new Map() }, vars, 'HashMap');
+      return;
+    }
+    
+    // Set/Collection/List declaration from method result: Set<T> name = expr; Collection<T> name = expr;
+    const collectionDeclMatch = code.match(/^(?:Set|Collection|List)\s*<[^>]*>\s+(\w+)\s*=\s*(.+)$/);
+    if (collectionDeclMatch) {
+      const val = this.evaluateExpression(collectionDeclMatch[2], vars);
+      this.setVar(collectionDeclMatch[1], val, vars, 'Collection');
+      return;
+    }
+    
+    // StringBuilder declaration
+    const sbMatch = code.match(/^StringBuilder\s+(\w+)\s*=\s*new\s+StringBuilder\s*\(\s*(.*?)\s*\)/);
+    if (sbMatch) {
+      const initVal = sbMatch[2] ? this.evaluateExpression(sbMatch[2], vars) : '';
+      this.setVar(sbMatch[1], { __type__: 'StringBuilder', value: String(initVal || '') }, vars, 'StringBuilder');
+      return;
+    }
+    
+    // scanner.close() and other no-op close calls
     if (code.match(/^\w+\.close\(\)$/)) return;
+    
+    // System.out.printf — formatted print
+    const printfMatch = code.match(/^System\.out\.printf\((.+)\)$/);
+    if (printfMatch) {
+      const argsStr = printfMatch[1];
+      const args = this.splitOnOperator(argsStr, ',').map(a => this.evaluateExpression(a.trim(), vars));
+      let fmt = String(args[0]);
+      let ai = 1;
+      const result = fmt.replace(/%[dfsn%]/g, (m) => {
+        if (m === '%%') return '%';
+        if (m === '%n') return '\n';
+        if (ai < args.length) return String(args[ai++]);
+        return m;
+      });
+      // printf doesn't add newline, split on \n for multi-line
+      const lines = result.split('\n');
+      lines.forEach((line, idx) => {
+        if (idx === 0) {
+          if (this.output.length > 0) { this.output[this.output.length - 1] += line; }
+          else { this.output.push(line); }
+        } else {
+          this.output.push(line);
+        }
+      });
+      return;
+    }
+    
+    // Standalone method calls on objects: list.add(x), map.put(k,v), sb.append(x), Collections.sort(list)
+    const stmtMethodMatch = code.match(/^(\w+(?:\.\w+)*)\.(\w+)\((.*)?\)$/);
+    if (stmtMethodMatch) {
+      const objName = stmtMethodMatch[1];
+      const methodName = stmtMethodMatch[2];
+      // Check if it's a known object method (not System.out.println which is handled elsewhere)
+      if (objName !== 'System.out') {
+        const val = this.getVar(objName, vars);
+        if (val && typeof val === 'object' && (val.__type__ === 'ArrayList' || val.__type__ === 'HashMap' || val.__type__ === 'StringBuilder')) {
+          this.evaluateExpression(code, vars);
+          return;
+        }
+        // Static method calls: Collections.sort, Arrays.fill, etc.
+        if (['Collections', 'Arrays', 'System'].includes(objName)) {
+          this.evaluateExpression(code, vars);
+          return;
+        }
+      }
+    }
     
     // Variable declaration with initialization
     // int x = 5; or int[] arr = {1,2,3}; or String s = "hello";
-    const declMatch = code.match(/^(int|double|boolean|char|String|float|long|short|byte)(\[\])?\s+(\w+)\s*=\s*(.+)$/);
+    const declMatch = code.match(/^(int|double|boolean|char|String|float|long|short|byte|Integer|Double|Long|Float|Short|Byte|Boolean|Character|Object|var)(\[\])?\s+(\w+)\s*=\s*(.+)$/);
     if (declMatch) {
       const type = declMatch[1] + (declMatch[2] || '');
       const name = declMatch[3];
@@ -1034,12 +1540,12 @@ class JavaInterpreter {
     }
     
     // Variable declaration without initialization
-    const declOnlyMatch = code.match(/^(int|double|boolean|char|String|float|long|short|byte)(\[\])?\s+(\w+)\s*$/);
+    const declOnlyMatch = code.match(/^(int|double|boolean|char|String|float|long|short|byte|Integer|Double|Long|Float|Short|Byte|Boolean|Character|Object|var)(\[\])?\s+(\w+)\s*$/);
     if (declOnlyMatch) {
       const type = declOnlyMatch[1] + (declOnlyMatch[2] || '');
       const name = declOnlyMatch[3];
-      const defaults = { 'int': 0, 'double': 0.0, 'boolean': false, 'char': '\0', 'String': null, 'float': 0.0, 'long': 0, 'short': 0, 'byte': 0 };
-      this.setVar(name, defaults[declOnlyMatch[1]] ?? 0, vars, type);
+      const defaults = { 'int': 0, 'double': 0.0, 'boolean': false, 'char': '\0', 'String': null, 'float': 0.0, 'long': 0, 'short': 0, 'byte': 0, 'Integer': null, 'Double': null, 'Long': null, 'Float': null, 'Short': null, 'Byte': null, 'Boolean': null, 'Character': null, 'Object': null, 'var': null };
+      this.setVar(name, defaults[declOnlyMatch[1]] ?? null, vars, type);
       return;
     }
     
@@ -1113,7 +1619,7 @@ class JavaInterpreter {
     if (printlnMatch) {
       const arg = printlnMatch[1];
       const value = arg ? this.evaluateExpression(arg, vars) : '';
-      this.output.push(String(value));
+      this.output.push(this.toJavaString(value));
       return;
     }
     
@@ -1122,9 +1628,9 @@ class JavaInterpreter {
       const arg = printMatch[1];
       const value = arg ? this.evaluateExpression(arg, vars) : '';
       if (this.output.length > 0) {
-        this.output[this.output.length - 1] += String(value);
+        this.output[this.output.length - 1] += this.toJavaString(value);
       } else {
-        this.output.push(String(value));
+        this.output.push(this.toJavaString(value));
       }
       return;
     }
@@ -1299,9 +1805,21 @@ class JavaInterpreter {
     const varSnapshot = {};
     for (const [name, val] of Object.entries(vars)) {
       if (typeof val === 'object' && val !== null && 'value' in val) {
+        let clonedValue = val.value;
+        if (Array.isArray(val.value)) {
+          clonedValue = [...val.value];
+        } else if (val.value && typeof val.value === 'object') {
+          if (val.value.__type__ === 'ArrayList') {
+            clonedValue = { __type__: 'ArrayList', items: [...val.value.items] };
+          } else if (val.value.__type__ === 'HashMap') {
+            clonedValue = { __type__: 'HashMap', map: new Map(val.value.map) };
+          } else if (val.value.__type__ === 'StringBuilder') {
+            clonedValue = { __type__: 'StringBuilder', value: val.value.value };
+          }
+        }
         varSnapshot[name] = {
           type: val.type,
-          value: Array.isArray(val.value) ? [...val.value] : val.value,
+          value: clonedValue,
           changed: val.changed || false,
           prevValue: val.prevValue,
           changedIndex: val.changedIndex
@@ -2146,7 +2664,26 @@ export default function JavaCodeVisualizer() {
     return changes;
   }, [currentVars, prevVars]);
 
+  // Execution path visualization
+  const allExecutedLines = useMemo(() => {
+    if (states.length === 0) return new Set();
+    return states[states.length - 1].executedLines || new Set();
+  }, [states]);
+
+  const execCounts = useMemo(() => {
+    const counts = {};
+    for (let i = 0; i <= currentStep && i < states.length; i++) {
+      const line = states[i].line;
+      if (line) counts[line] = (counts[line] || 0) + 1;
+    }
+    return counts;
+  }, [states, currentStep]);
+
   const lines = code.split('\n');
+
+  const codeLineCount = lines.filter(l => l.trim() && !l.trim().startsWith('//') && !l.trim().startsWith('import') && l.trim() !== '{' && l.trim() !== '}').length;
+  const executedLineCount = allExecutedLines.size;
+  const coveragePercent = codeLineCount > 0 ? Math.round((executedLineCount / codeLineCount) * 100) : 0;
 
   // Derive file name from class declaration
   const derivedFileName = useMemo(() => {
@@ -2544,15 +3081,74 @@ export default function JavaCodeVisualizer() {
           background: ${t.red};
         }
         
-        .executed-dot {
+        .exec-stripe {
           position: absolute;
-          left: 8px;
+          left: 1px;
+          top: 2px;
+          bottom: 2px;
+          width: 3px;
+          border-radius: 2px;
+          background: ${t.green};
+          opacity: 0.5;
+        }
+        
+        .exec-count {
+          position: absolute;
+          left: 2px;
           top: 50%;
           transform: translateY(-50%);
-          width: 5px;
-          height: 5px;
-          border-radius: 50%;
-          background: ${t.textDim};
+          font-size: 8px;
+          font-weight: 700;
+          font-family: 'DM Sans', sans-serif;
+          color: ${t.orange};
+          min-width: 14px;
+          height: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 3px;
+          background: ${t.orangeOverlay};
+        }
+        
+        .line-dimmed {
+          opacity: 0.3;
+        }
+        .line-not-reached-tag {
+          display: inline-flex;
+          align-items: center;
+          padding: 0px 5px;
+          margin-left: 8px;
+          border-radius: 3px;
+          font-size: 9px;
+          font-weight: 600;
+          font-family: 'DM Sans', sans-serif;
+          color: ${t.textDim};
+          background: ${isDark ? 'rgba(139,148,158,0.1)' : 'rgba(87,96,106,0.08)'};
+          letter-spacing: 0.3px;
+          user-select: none;
+        }
+        
+        .coverage-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 2px 10px;
+          border-radius: 10px;
+          font-size: 11px;
+          font-weight: 600;
+          font-family: 'DM Sans', sans-serif;
+        }
+        .coverage-pill .coverage-bar {
+          width: 50px;
+          height: 4px;
+          border-radius: 2px;
+          background: ${t.border};
+          overflow: hidden;
+        }
+        .coverage-pill .coverage-fill {
+          height: 100%;
+          border-radius: 2px;
+          transition: width 0.3s;
         }
         
         .speed-slider {
@@ -2907,6 +3503,16 @@ export default function JavaCodeVisualizer() {
               transition: 'width 0.2s'
             }} />
           </div>
+          {/* Coverage indicator */}
+          <span className="coverage-pill" style={{ color: coveragePercent === 100 ? t.green : t.textMuted }}>
+            <span className="coverage-bar">
+              <div className="coverage-fill" style={{
+                width: `${coveragePercent}%`,
+                background: coveragePercent === 100 ? t.green : t.orange
+              }} />
+            </span>
+            <span>{coveragePercent}%</span>
+          </span>
         </div>
       )}
       
@@ -2952,6 +3558,11 @@ export default function JavaCodeVisualizer() {
                   const isExecuted = executedLines.has(lineNum);
                   const isError = lineNum === errorLine;
                   const hasBreakpoint = breakpoints.has(lineNum);
+                  const lineExecCount = execCounts[lineNum] || 0;
+                  const wasEverExecuted = allExecutedLines.has(lineNum);
+                  const trimmedLine = line.trim();
+                  const isCodeLine = trimmedLine && trimmedLine !== '{' && trimmedLine !== '}' && !trimmedLine.startsWith('//') && !trimmedLine.startsWith('import') && !trimmedLine.startsWith('public class');
+                  const isNeverReached = isRunning && isCodeLine && !wasEverExecuted && currentStep === states.length - 1;
                   
                   return (
                     <div
@@ -2975,10 +3586,16 @@ export default function JavaCodeVisualizer() {
                         style={{ lineHeight: '28px', fontSize: 12, color: isCurrentLine ? t.accent : t.textDim, pointerEvents: 'auto' }}
                       >
                         {hasBreakpoint && <div className="breakpoint-dot" />}
-                        {!hasBreakpoint && isExecuted && !isCurrentLine && <div className="executed-dot" />}
+                        {!hasBreakpoint && isExecuted && !isCurrentLine && lineExecCount > 1 && (
+                          <div className="exec-count">{lineExecCount > 99 ? '99+' : lineExecCount}</div>
+                        )}
+                        {!hasBreakpoint && isExecuted && !isCurrentLine && lineExecCount <= 1 && (
+                          <div className="exec-stripe" />
+                        )}
                         {lineNum}
                       </div>
                       <div
+                        className={isNeverReached ? 'line-dimmed' : ''}
                         style={{
                           flex: 1,
                           padding: '0 16px',
@@ -2989,10 +3606,14 @@ export default function JavaCodeVisualizer() {
                           letterSpacing: '0px',
                           wordSpacing: '0px',
                           fontFeatureSettings: 'normal',
-                          textRendering: 'auto'
+                          textRendering: 'auto',
+                          display: 'flex',
+                          alignItems: 'center'
                         }}
-                        dangerouslySetInnerHTML={{ __html: highlightJava(line) || ' ' }}
-                      />
+                      >
+                        <span dangerouslySetInnerHTML={{ __html: highlightJava(line) || ' ' }} />
+                        {isNeverReached && <span className="line-not-reached-tag">not reached</span>}
+                      </div>
                     </div>
                   );
                 })}
