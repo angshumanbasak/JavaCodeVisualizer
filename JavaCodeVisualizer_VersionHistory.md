@@ -293,6 +293,86 @@ Completed all four "Quick Win" features in one release.
 
 ---
 
+### v19.0 — Step-Through Variable Diff
+**Lines:** ~3,389 | **Date:** May 31, 2026
+
+Enhanced the Variables tab with rich before→after diff visualization when stepping through code.
+
+- **Changes summary header** — `⚡ 2 changes on this step: sum, i` (green) or `No variable changes on this step` (muted)
+- **NEW badge** — freshly declared variables get a blue-bordered card with `NEW` pill badge
+- **Before→After diff pill** — changed values show `13 → 21` in a green-tinted rounded container with strikethrough old value, arrow, and bold new value
+- **Delta badge** — numeric changes show `+8` (green) or `-3` (red) indicating the magnitude of change
+- **Card animations** — `card-pulse` scale animation on changed/new cards, keyed to `currentStep` for re-triggering
+- **Array cell diff** — changed cells flash with `cell-flash` animation and show previous value as strikethrough above the cell
+- `prevState` and `varChanges` computed via `useMemo` comparing current and previous step snapshots
+
+---
+
+### v20.0 — Execution Path Visualization
+**Lines:** ~3,492 | **Date:** May 31, 2026
+
+Added visual indicators showing which lines were executed, how many times, and which were never reached.
+
+- **Green execution stripe** — subtle 3px green bar on the left gutter edge for every executed line (replaces old tiny dot)
+- **Execution count badges** — lines hit multiple times in loops show an orange count badge (`5`, `12`, `99+`)
+- **Dimmed never-reached lines** — at the final step, code lines that were never executed fade to 30% opacity
+- **"not reached" tags** — grey pill labels on dimmed lines explicitly marking skipped code branches
+- **Coverage indicator** — percentage pill in the step bar with mini progress bar; green at 100%, orange when lines were skipped
+- `allExecutedLines`, `execCounts`, `codeLineCount`, `coveragePercent` computed values
+- Coverage excludes blank lines, `{`, `}`, comments, imports, and class declarations
+
+---
+
+### v21.0 — Comprehensive Method Library (High/Medium/Low Priority)
+**Lines:** ~3,915 | **Date:** May 31, 2026
+
+Massive interpreter upgrade adding ~150 methods across all major Java standard library classes.
+
+- **Math** — 16 new: `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `toRadians`, `toDegrees`, `signum`, `cbrt`, `exp`, `hypot` + constants `PI`, `E`
+- **Integer** — 10 methods: `parseInt`, `valueOf`, `toString`, `toBinaryString`, `toHexString`, `toOctalString`, `compare`, `max`, `min`, `sum` + constants `MAX_VALUE`, `MIN_VALUE`, `SIZE`, `BYTES`
+- **Long** — `parseLong`, `valueOf`, `toString`, `compare` + `MAX_VALUE`, `MIN_VALUE`, `SIZE`, `BYTES`
+- **Double** — `parseDouble`, `valueOf`, `toString`, `isNaN`, `isInfinite`, `compare` + `MAX_VALUE`, `MIN_VALUE`, `POSITIVE_INFINITY`, `NEGATIVE_INFINITY`, `NaN`, `SIZE`, `BYTES`
+- **Float/Byte/Short** — `MAX_VALUE`, `MIN_VALUE`, `SIZE`, `BYTES` constants
+- **Character** — 11 methods: `isLetter`, `isDigit`, `isLetterOrDigit`, `isUpperCase`, `isLowerCase`, `toUpperCase`, `toLowerCase`, `isWhitespace`, `isAlphabetic`, `compare`, `getNumericValue`
+- **String instance** — 16 new: `lastIndexOf`, `equalsIgnoreCase`, `compareTo`, `compareToIgnoreCase`, `replaceAll`, `replaceFirst`, `isBlank`, `split`, `concat`, `matches`, `codePointAt`, `hashCode`, `getBytes`, `repeat`, `strip`, `stripLeading`, `stripTrailing`
+- **String static** — `valueOf`, `join`, `format`
+- **Arrays** — 7 new: `fill`, `copyOf`, `copyOfRange`, `equals`, `deepEquals`, `binarySearch`, `asList`
+- **System** — `currentTimeMillis`, `nanoTime`, `arraycopy`, `exit`
+- **System.out.printf** — `%d`, `%f`, `%.2f`, `%s`, `%n`, `%%` format specifiers
+- **ArrayList** — Full class (16 methods): `add`, `get`, `set`, `remove`, `size`, `isEmpty`, `contains`, `indexOf`, `lastIndexOf`, `clear`, `toArray`, `subList`, `addAll`, `sort`, `toString`, `forEach`
+- **HashMap** — Full class (15 methods): `put`, `get`, `getOrDefault`, `remove`, `containsKey`, `containsValue`, `size`, `isEmpty`, `clear`, `keySet`, `values`, `entrySet`, `putIfAbsent`, `replace`, `toString`
+- **StringBuilder** — Full class (13 methods): `append`, `insert`, `delete`, `deleteCharAt`, `replace`, `reverse`, `toString`, `length`, `charAt`, `substring`, `indexOf`, `capacity`, `setCharAt`
+- **Collections** — 8 static methods: `sort`, `reverse`, `max`, `min`, `frequency`, `swap`, `fill`, `unmodifiableList`
+- **Infrastructure:** `toJavaString()` helper, deep-copy for ArrayList/HashMap/StringBuilder in state snapshots, standalone method call routing for collection operations
+
+---
+
+### v22.0 — Wrapper Types, Collection Declarations & Inline Comment Stripping
+**Lines:** ~3,999 | **Date:** May 31, 2026
+
+Fixed critical interpreter issues discovered during comprehensive method testing with 16 test programs.
+
+- **Wrapper type declarations** — `Integer`, `Double`, `Long`, `Float`, `Short`, `Byte`, `Boolean`, `Character`, `Object`, `var` now work as variable types in declarations (previously only primitive types matched)
+- **Number wrapper instance methods** — `.intValue()`, `.doubleValue()`, `.floatValue()`, `.longValue()`, `.shortValue()`, `.byteValue()`, `.toString()`, `.compareTo()`, `.equals()`, `.hashCode()` on numeric variables; `.booleanValue()` for booleans
+- **Missing SIZE/BYTES constants** — added for `Short` (16/2), `Byte` (8/1), `Float` (32/4), `Long` (64/8), `Double` (64/8); also `Boolean.TRUE`/`FALSE`
+- **ArrayList constructor with initial collection** — `new ArrayList<>(Arrays.asList(40, 10, 30))` now works
+- **Collection type declarations** — `List<T>`, `Set<T>`, `Collection<T>` assignments from method results like `keySet()`, `values()`, `Arrays.asList()`
+- **Inline comment stripping** — `stripInlineComment()` method scans each line character-by-character, tracks string literal boundaries, and strips `//` comments outside strings. Applied in `parseMethodBody` before any pattern matching. Handles edge cases like `"https://example.com"` correctly
+
+---
+
+### v23.0 (Final) — Float Division IEEE 754 + Numeric Literal Suffixes
+**Lines:** ~4,010 | **Date:** May 31, 2026
+
+Fixed remaining interpreter issues found during Double/Long method testing.
+
+- **IEEE 754 float division** — `1.0 / 0.0` now returns `Infinity` and `0.0 / 0.0` returns `NaN` instead of throwing `ArithmeticException`. Division handler inspects raw expression text for decimal-point patterns to distinguish float from integer division. Integer `10 / 0` still correctly throws
+- **Numeric literal suffixes** — `L`/`l` (long: `55000L`), `f`/`F` (float: `3.14f`), `d`/`D` (double: `3.14d`) now recognized and stripped before parsing
+- **Underscore separators** — Java 7+ numeric literals like `100_000` and `1_000_000` now parsed correctly by stripping underscores
+- Verified with 16 comprehensive test programs covering all method categories
+
+---
+
 ## Summary Table
 
 | Version | Key Change | Lines |
@@ -314,4 +394,9 @@ Completed all four "Quick Win" features in one release.
 | v15.0 | Grade Calculator example + string concatenation fix | ~2,970 |
 | v16.0 | Inline Scanner input display in Output tab | ~2,980 |
 | v17.0 | Status bar (line count, char count, cursor position) | ~3,021 |
-| v18.0 | Download, Fullscreen, Shortcuts, Undo/Redo | ~3,196 |
+| v18.0 | Quick Wins: Download, Fullscreen, Shortcuts, Undo/Redo | ~3,196 |
+| v19.0 | Step-through variable diff (before→after, delta, NEW badge) | ~3,389 |
+| v20.0 | Execution path visualization (stripes, counts, coverage) | ~3,492 |
+| v21.0 | Comprehensive method library (~150 methods, collections) | ~3,915 |
+| v22.0 | Wrapper types, collection declarations, inline comments | ~3,999 |
+| v23.0 | Float division IEEE 754, numeric suffixes (L/f/d), underscores | ~4,010 |
