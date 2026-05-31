@@ -1,6 +1,6 @@
 # Java Code Visualizer — Version History
 
-## Development Timeline (May 23–28, 2026)
+## Development Timeline (May 23–31, 2026)
 
 This document lists every version of `JavaCodeVisualizer.jsx` produced during the iterative development process, along with the changes made in each version.
 
@@ -186,7 +186,7 @@ Fixed two expression evaluator bugs that caused Bubble Sort to produce unsorted 
 
 ---
 
-### v14.0 (Final) — Example Programs Renamed with Descriptive Class Names
+### v14.0 — Example Programs Renamed with Descriptive Class Names
 **Lines:** ~2,928 | **Date:** May 28, 2026
 
 Replaced `public class Main` in all 8 built-in example programs with descriptive class names.
@@ -203,6 +203,93 @@ Replaced `public class Main` in all 8 built-in example programs with descriptive
 - Call Stack tab shows class-contextual names (e.g. `Fibonacci.main(String[] args)`)
 - The `derivedFileName` logic (from v8.0) automatically picks up the new class names
 - All 8 examples tested and verified working with renamed classes
+
+---
+
+### v15.0 — Grade Calculator Example + String Concatenation Fix
+**Lines:** ~2,970 | **Date:** May 28, 2026
+
+Added a 9th built-in example that exercises the Scanner input system, and fixed a string concatenation bug.
+
+- **New example: Grade Calculator (Scanner)** — multi-input program using `nextLine()` and `nextInt()` in a for loop; collects student name, number of subjects, and marks; calculates total, average, and assigns grade (A+ through F) using `if`/`else if`/`else` chain
+- **String literal detection fix** — expressions like `"subject " + i + ":"` were treated as a single string literal because the expression started and ended with `"`. The string handler now finds the actual end of the first quoted string and falls through to the concatenation handler when more expression follows
+- All 9 examples verified working
+
+---
+
+### v16.0 — Inline Scanner Input Display
+**Lines:** ~2,980 | **Date:** May 28, 2026
+
+User inputs now appear inline after prompts in the Output tab, matching real terminal behavior.
+
+- **Before:** prompts and inputs shown separately — prompts as white text, inputs listed at the bottom with green `›` markers
+- **After:** each input appears on the same line as its prompt (e.g., `Enter student name: Angshuman`)
+- **Interpreter change:** after consuming a Scanner input, the interpreter now appends the raw input value to the current output line (the prompt from `System.out.print`), then pushes a new empty line to simulate the user pressing Enter
+- **Output tab simplified** — removed the complex merging logic from v15; the interpreter itself handles inline display, so the Output tab renders a simple list of output lines
+- Example prompts updated to use `System.out.print` (no newline) instead of `println` for natural inline appearance
+- Bubble Sort and all other examples verified still working after changes
+
+---
+
+### v17.0 — Status Bar (Line Count, Character Count, Cursor Position)
+**Lines:** ~3,021 | **Date:** May 30, 2026
+
+Added an IDE-style status bar at the bottom of the editor pane.
+
+- **Left side:** cursor position — `Ln 10, Col 25` — updates in real-time via `selectionStart` tracking on click, keyup, and select events
+- **Right side:** code metrics — `24 lines · 487 chars · Java`
+- `cursorPos` state with `updateCursorPos` callback converts character offset to line/column numbers
+- Status bar uses `bgDeep` background and `border` color, blending with both dark and light themes
+- `flexShrink: 0` ensures the bar never collapses when the editor content is tall
+
+---
+
+### v18.0 (Final) — Quick Wins: Download, Fullscreen, Keyboard Shortcuts, Undo/Redo
+**Lines:** ~3,196 | **Date:** May 31, 2026
+
+Completed all four "Quick Win" features in one release.
+
+- **Download code button:**
+  - Toolbar icon button (Download icon) between Reset and Fullscreen
+  - Saves current editor content as a `.java` file named after the class (e.g., `BubbleSort.java`)
+  - Uses `Blob` + `URL.createObjectURL` for client-side file generation
+  - Also triggered via `Cmd/Ctrl+S` keyboard shortcut
+
+- **Fullscreen toggle:**
+  - Toolbar icon button that switches between `Maximize2` and `Minimize2` icons
+  - Uses the browser Fullscreen API (`requestFullscreen` / `exitFullscreen`)
+  - `appRef` on root container targets the entire app for fullscreen
+  - Listens for `fullscreenchange` event to sync state when user presses Escape
+  - Also triggered via `F11` keyboard shortcut
+
+- **Keyboard shortcuts (global handler via `useEffect`):**
+  - `Cmd/Ctrl + Enter` → Compile & Run
+  - `Cmd/Ctrl + S` → Download as .java file (prevents browser's default save dialog)
+  - `Cmd/Ctrl + /` → Toggle line comment (`//`) on current or selected lines
+  - `Cmd/Ctrl + Z` → Undo
+  - `Cmd/Ctrl + Shift + Z` → Redo
+  - `Tab` → Insert 4 spaces (existing, unchanged)
+  - `F11` → Toggle fullscreen
+
+- **Comment toggling (`handleToggleComment`):**
+  - Detects which lines are covered by the current selection
+  - If all selected lines start with `//`, removes comments; otherwise adds `// ` prefix
+  - Works on single line (cursor without selection) or multi-line selection
+
+- **Undo/Redo system:**
+  - `codeHistoryRef` stores up to 100 code snapshots
+  - `historyIndexRef` tracks current position in the history stack
+  - `updateCode()` wrapper pushes to history on every user edit (typing, Tab, comment toggle)
+  - `handleUndo()` / `handleRedo()` navigate the history stack
+  - `isUndoRedoRef` flag prevents undo/redo actions from being pushed as new history entries
+  - Loading an example or file resets the history to a clean slate
+  - Intercepts browser's native `Cmd+Z` to use custom history instead of textarea's broken built-in undo
+
+- **Status bar updated:**
+  - Shortcut hint badges added in the center: `⌘↵ Run`, `⌘S Save`, `⌘/ Comment`, `⌘Z Undo`, `F11 Fullscreen`
+  - Subtle pill-shaped badges with `bgCard` background at 60% opacity
+
+- Added `Download`, `Maximize2`, `Minimize2` to lucide-react imports
 
 ---
 
@@ -224,3 +311,7 @@ Replaced `public class Main` in all 8 built-in example programs with descriptive
 | v12.0 | Copy/selection fix (native selection restored) | ~2,901 |
 | v13.0 | Interpreter fixes (chained subtraction + type cast) | ~2,927 |
 | v14.0 | Example programs renamed with descriptive class names | ~2,928 |
+| v15.0 | Grade Calculator example + string concatenation fix | ~2,970 |
+| v16.0 | Inline Scanner input display in Output tab | ~2,980 |
+| v17.0 | Status bar (line count, char count, cursor position) | ~3,021 |
+| v18.0 | Download, Fullscreen, Shortcuts, Undo/Redo | ~3,196 |
