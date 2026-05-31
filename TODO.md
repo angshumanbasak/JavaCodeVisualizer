@@ -6,29 +6,29 @@ This document tracks all planned features for the Java Code Visualizer, organize
 
 ---
 
-## Quick Wins (Small Effort, Nice Polish)
+## Quick Wins (Small Effort, Nice Polish) — ✅ ALL COMPLETE
 
 - [x] **Line count & character count in status bar**
   Display total lines, character count, and current cursor position (Ln, Col) at the bottom of the editor pane — gives users immediate awareness of code size and cursor location, just like VS Code.
 
 - [x] **Download code button**
-  Add a toolbar button to save the current editor content as a `.java` file to the user's machine — eliminates the need to manually copy-paste code out of the visualizer.
+  Toolbar icon button saves the current editor content as a `.java` file named after the class. Also triggered via `Cmd/Ctrl+S`.
 
 - [x] **Fullscreen toggle**
-  Add a button to expand the editor or the entire app to fullscreen mode — provides a distraction-free environment for focused coding and visualization.
+  Toolbar button expands the entire app to browser fullscreen mode. Icon switches between Maximize/Minimize. Also triggered via `F11`.
 
 - [x] **Keyboard shortcuts**
-  Implement common editor shortcuts: `Cmd/Ctrl+Enter` to Compile & Run, `Cmd/Ctrl+S` to download the file, `Cmd/Ctrl+/` to toggle line comments, `Cmd/Ctrl+Z` / `Cmd/Ctrl+Shift+Z` for undo/redo — accelerates workflow for power users and makes the editor feel professional.
+  `Cmd/Ctrl+Enter` (Compile & Run), `Cmd/Ctrl+S` (Download), `Cmd/Ctrl+/` (Toggle comment), `Cmd/Ctrl+Z` (Undo), `Cmd/Ctrl+Shift+Z` (Redo), `Tab` (Indent), `F11` (Fullscreen). Shortcut hints displayed in the status bar.
 
 ---
 
-## Medium Features (Meaningful Upgrades)
+## Medium Features (Meaningful Upgrades) — 3 of 5 COMPLETE
 
-- [ ] **Step-through variable diff**
-  When stepping forward or backward, highlight exactly which variable changed with a before→after animation (not just showing current values) — makes it immediately obvious what each line of code did to the program state.
+- [x] **Step-through variable diff**
+  Before→after diff pills (`13 → 21`), delta badges (`+8`), `NEW` badges for declarations, changes summary header, array cell diff with previous value strikethrough, pulse animations on changed cards.
 
-- [ ] **Execution path visualization**
-  Add a minimap or margin indicator showing which lines were executed vs skipped (e.g., greyed-out lines that were never reached) — helps users understand control flow, especially in programs with conditionals and early returns.
+- [x] **Execution path visualization**
+  Green execution stripes in gutter, execution count badges for looped lines, dimmed never-reached lines with "not reached" tags, coverage percentage indicator with mini progress bar in step bar.
 
 - [ ] **Breakpoint-aware auto-play**
   Make auto-play pause at breakpoints instead of stepping through every line — allows users to set breakpoints on interesting lines and "fast-forward" to them, mimicking a real debugger experience.
@@ -36,8 +36,8 @@ This document tracks all planned features for the Java Code Visualizer, organize
 - [ ] **Multi-tab editor**
   Support opening multiple files simultaneously with tabs in the editor pane — useful when users load several `.java` files from disk and want to switch between them without losing their place.
 
-- [ ] **Undo/Redo**
-  Implement `Cmd/Ctrl+Z` for undo and `Cmd/Ctrl+Shift+Z` for redo in the code editor — essential for a comfortable editing experience, especially when experimenting with code changes.
+- [x] **Undo/Redo**
+  100-entry history stack with `updateCode()` wrapper, `handleUndo()`/`handleRedo()` navigation, history reset on example/file load. Intercepts browser's native `Cmd+Z`.
 
 ---
 
@@ -73,7 +73,7 @@ This document tracks all planned features for the Java Code Visualizer, organize
 
 ---
 
-## Interpreter Enhancements
+## Interpreter Enhancements — 4 of 7 COMPLETE
 
 - [ ] **Multi-line comment support**
   Handle `/* */` block comments spanning multiple lines — currently only single-line `//` comments are fully supported.
@@ -87,14 +87,17 @@ This document tracks all planned features for the Java Code Visualizer, organize
 - [ ] **Try/catch/finally**
   Add exception handling support — enables programs that gracefully handle errors, which is fundamental to real-world Java programming.
 
-- [ ] **ArrayList and HashMap**
-  Add basic support for `ArrayList` and `HashMap` from `java.util` — the most commonly used Java collections that students encounter early on.
+- [x] **ArrayList and HashMap**
+  Full ArrayList (16 methods), HashMap (15 methods), StringBuilder (13 methods), Collections (8 static methods) support with proper state snapshots and deep-copying. Also supports `new ArrayList<>(Arrays.asList(...))` constructor pattern.
 
-- [ ] **String formatting**
-  Support `String.format()` and `System.out.printf()` — commonly used in Java for formatted output.
+- [x] **String formatting**
+  `String.format()`, `System.out.printf()` with `%d`, `%f`, `%.2f`, `%s`, `%n`, `%%` specifiers.
 
-- [ ] **Multiple classes / static methods across classes**
-  Allow programs with helper classes or utility methods defined outside `main` — enables more realistic Java program structures.
+- [x] **Comprehensive standard library**
+  Math (17 methods + PI, E), Integer/Long/Double/Float/Byte/Short (methods + constants + SIZE/BYTES), Character (11 methods), String (17 new instance methods + 3 static), Arrays (8 utility methods), wrapper type declarations, number instance methods (.intValue(), .doubleValue(), etc.).
+
+- [x] **Inline comment stripping**
+  `stripInlineComment()` handles `//` comments after statements while preserving `//` inside string literals (e.g., URLs). Applied during parsing before any pattern matching.
 
 ---
 
@@ -119,8 +122,8 @@ This document tracks all planned features for the Java Code Visualizer, organize
 
 ## Completed Features ✓
 
+### Core Engine (v1.0)
 - [x] Java Interpreter Engine (primitives, arrays, methods, recursion, control flow)
-- [x] Dark/Light theme toggle with Sun/Moon animation
 - [x] Syntax-highlighted code editor with Fira Code font
 - [x] Line numbers with clickable breakpoints
 - [x] Variables tab with array cell visualization and change highlighting
@@ -130,15 +133,58 @@ This document tracks all planned features for the Java Code Visualizer, organize
 - [x] Step Forward/Back, Auto Play/Pause, Reset
 - [x] Speed slider for auto-play
 - [x] 9 built-in example programs with descriptive class names
-- [x] Scanner/keyboard input support (nextInt, nextDouble, nextLine, next, nextBoolean)
-- [x] Inline input display in Output tab (inputs appear after prompts)
+
+### UI/Theme (v2.0–v12.0)
+- [x] Dark/Light theme toggle with Sun/Moon animation
+- [x] Full-width layout fix
+- [x] Java logo icon
+- [x] Fira Code font, 16px, ligature-free cursor alignment
+- [x] Native text selection (word-level copy working)
+
+### File & Input (v4.0–v16.0)
 - [x] Open Java File(s) from local machine
 - [x] Dynamic file label from class name
-- [x] Java logo icon
+- [x] Scanner/keyboard input support (nextInt, nextDouble, nextLine, next, nextBoolean)
+- [x] Inline input display in Output tab (inputs appear after prompts)
 - [x] Clear button for Output tab
+
+### Quick Wins (v17.0–v18.0)
 - [x] Line count, character count, and cursor position in status bar
+- [x] Download code as .java file (Cmd/Ctrl+S)
+- [x] Fullscreen toggle (F11)
+- [x] Keyboard shortcuts (Cmd+Enter, Cmd+S, Cmd+/, Cmd+Z, Cmd+Shift+Z)
+- [x] Undo/Redo with 100-entry history stack
+- [x] Comment toggling (Cmd+/)
+- [x] Status bar shortcut hints
+
+### Medium Features (v19.0–v20.0)
+- [x] Step-through variable diff (before→after pills, delta badges, NEW badges, card animations)
+- [x] Execution path visualization (green stripes, count badges, dimmed lines, coverage %)
+
+### Interpreter Library (v21.0–v23.0)
+- [x] Math: 17 methods + PI, E constants
+- [x] Integer: 10 methods + MAX_VALUE, MIN_VALUE, SIZE, BYTES
+- [x] Long: 4 methods + constants + SIZE, BYTES
+- [x] Double: 6 methods + 5 constants + SIZE, BYTES
+- [x] Float/Byte/Short: MAX_VALUE, MIN_VALUE, SIZE, BYTES
+- [x] Character: 11 methods
+- [x] String: 17 new instance methods + valueOf, join, format static
+- [x] StringBuilder: 13 methods (full class)
+- [x] ArrayList: 16 methods (full class)
+- [x] HashMap: 15 methods (full class)
+- [x] Collections: 8 static methods
+- [x] Arrays: 8 utility methods (fill, copyOf, copyOfRange, equals, deepEquals, binarySearch, asList, toString)
+- [x] System: currentTimeMillis, nanoTime, arraycopy, exit
+- [x] System.out.printf with %d, %f, %s, %n, %% specifiers
+- [x] Wrapper type declarations (Integer, Double, Long, Float, etc.)
+- [x] Number instance methods (.intValue(), .doubleValue(), .longValue(), etc.)
+- [x] Inline comment stripping (preserves // inside strings)
+- [x] IEEE 754 float division (Infinity, NaN for 1.0/0.0)
+- [x] Numeric literal suffixes (L, f, d) and underscore separators (100_000)
+
+### Deployment
 - [x] Deployed on GitHub Pages with CI/CD via GitHub Actions
 
 ---
 
-*Last updated: May 30, 2026*
+*Last updated: May 31, 2026*
