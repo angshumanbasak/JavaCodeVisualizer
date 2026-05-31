@@ -2119,6 +2119,32 @@ export default function JavaCodeVisualizer() {
   const currentOutput = currentState?.output || [];
   const currentVars = currentState?.vars || {};
   const currentCallStack = currentState?.callStack || [];
+  
+  // Compute variable changes for diff display
+  const prevState = currentStep > 0 && currentStep < states.length ? states[currentStep - 1] : null;
+  const prevVars = prevState?.vars || {};
+  
+  const varChanges = useMemo(() => {
+    const changes = [];
+    for (const [name, info] of Object.entries(currentVars)) {
+      const prev = prevVars[name];
+      const isNew = !prev;
+      const isChanged = info.changed;
+      
+      if (isNew) {
+        changes.push({ name, type: 'new', value: info.value, varType: info.type });
+      } else if (isChanged) {
+        const prevVal = info.prevValue;
+        const newVal = info.value;
+        let delta = null;
+        if (typeof prevVal === 'number' && typeof newVal === 'number') {
+          delta = newVal - prevVal;
+        }
+        changes.push({ name, type: 'changed', prevValue: prevVal, newValue: newVal, delta, varType: info.type });
+      }
+    }
+    return changes;
+  }, [currentVars, prevVars]);
 
   const lines = code.split('\n');
 
@@ -2348,9 +2374,96 @@ export default function JavaCodeVisualizer() {
           border-radius: 8px;
           padding: 10px 14px;
           margin-bottom: 8px;
-          transition: border-color 0.3s, background 0.4s;
+          transition: border-color 0.3s, background 0.4s, box-shadow 0.3s;
         }
-        .var-card.changed { border-color: ${t.green}; box-shadow: 0 0 12px ${t.greenGlow}; }
+        .var-card.changed {
+          border-color: ${t.green};
+          box-shadow: 0 0 12px ${t.greenGlow};
+          animation: card-pulse 0.6s ease-out;
+        }
+        .var-card.is-new {
+          border-color: ${t.accent};
+          box-shadow: 0 0 12px rgba(88,166,255,0.15);
+          animation: card-pulse 0.6s ease-out;
+        }
+        @keyframes card-pulse {
+          0% { transform: scale(1.02); }
+          50% { transform: scale(1.0); }
+          100% { transform: scale(1.0); }
+        }
+        
+        .diff-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 8px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          font-family: 'Fira Code', monospace;
+        }
+        .diff-pill.value-change {
+          background: ${t.greenGlow};
+          color: ${t.green};
+        }
+        .diff-pill.new-var {
+          background: rgba(88,166,255,0.12);
+          color: ${t.accent};
+          font-family: 'DM Sans', sans-serif;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          padding: 1px 6px;
+        }
+        .diff-pill .diff-arrow {
+          opacity: 0.6;
+          font-size: 11px;
+        }
+        .diff-pill .diff-old {
+          text-decoration: line-through;
+          opacity: 0.6;
+        }
+        .diff-pill .diff-new {
+          font-weight: 700;
+        }
+        .diff-delta {
+          display: inline-flex;
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-size: 10px;
+          font-weight: 700;
+          font-family: 'Fira Code', monospace;
+          margin-left: 4px;
+        }
+        .diff-delta.positive {
+          background: ${t.greenGlow};
+          color: ${t.green};
+        }
+        .diff-delta.negative {
+          background: ${isDark ? 'rgba(248,81,73,0.12)' : 'rgba(207,34,46,0.08)'};
+          color: ${t.red};
+        }
+        
+        .changes-summary {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 12px;
+          margin-bottom: 10px;
+          border-radius: 6px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .changes-summary.has-changes {
+          background: ${t.greenGlow};
+          color: ${t.green};
+        }
+        .changes-summary.no-changes {
+          background: ${t.bgCard};
+          color: ${t.textDim};
+        }
         
         .array-cell {
           display: inline-flex;
@@ -2364,11 +2477,33 @@ export default function JavaCodeVisualizer() {
           font-weight: 600;
           background: ${t.bg};
           color: ${t.text};
-          transition: all 0.2s;
+          transition: all 0.3s;
           padding: 0 6px;
+          position: relative;
         }
         .array-cell.highlight { border-color: ${t.orange}; background: ${t.orangeOverlay}; color: ${t.orange}; }
-        .array-cell.changed { border-color: ${t.green}; background: ${t.greenGlow}; color: ${t.green}; }
+        .array-cell.changed {
+          border-color: ${t.green};
+          background: ${t.greenGlow};
+          color: ${t.green};
+          animation: cell-flash 0.5s ease-out;
+        }
+        @keyframes cell-flash {
+          0% { transform: scale(1.15); }
+          100% { transform: scale(1.0); }
+        }
+        .array-cell-prev {
+          position: absolute;
+          top: -14px;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 9px;
+          color: ${t.red};
+          text-decoration: line-through;
+          opacity: 0.7;
+          white-space: nowrap;
+          font-weight: 600;
+        }
         
         .stack-frame {
           background: ${t.bgCard};
@@ -2977,62 +3112,120 @@ export default function JavaCodeVisualizer() {
                 </div>
               ) : (
                 <div>
+                  {/* Changes summary */}
+                  {Object.entries(currentVars).length > 0 && (
+                    <div className={`changes-summary ${varChanges.length > 0 ? 'has-changes' : 'no-changes'}`}>
+                      {varChanges.length > 0 ? (
+                        <>
+                          <span>⚡ {varChanges.length} change{varChanges.length > 1 ? 's' : ''} on this step:</span>
+                          <span style={{ fontWeight: 400, opacity: 0.8 }}>
+                            {varChanges.map(c => c.name).join(', ')}
+                          </span>
+                        </>
+                      ) : (
+                        <span>No variable changes on this step</span>
+                      )}
+                    </div>
+                  )}
+                  
                   {Object.entries(currentVars).length === 0 && (
                     <div style={{ color: t.textDim, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>No variables in scope yet.</div>
                   )}
-                  {Object.entries(currentVars).map(([name, info]) => (
-                    <div key={name} className={`var-card ${info.changed ? 'changed' : ''}`}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: Array.isArray(info.value) ? 8 : 0 }}>
-                        <span style={{ color: t.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>
-                          {info.type || 'var'}
-                        </span>
-                        <span style={{ color: t.textBright, fontWeight: 600, fontSize: 14 }}>{name}</span>
-                        {!Array.isArray(info.value) && (
-                          <>
-                            <span style={{ color: t.textDim }}>=</span>
-                            <span style={{ color: info.changed ? t.green : t.tokType, fontWeight: 600, fontSize: 14 }}>
-                              {typeof info.value === 'string' ? `"${info.value}"` : String(info.value)}
-                            </span>
-                            {info.changed && info.prevValue !== undefined && (
-                              <span style={{ color: t.textDim, fontSize: 12, textDecoration: 'line-through' }}>
-                                {typeof info.prevValue === 'string' ? `"${info.prevValue}"` : String(info.prevValue)}
-                              </span>
-                            )}
-                          </>
+                  {Object.entries(currentVars).map(([name, info]) => {
+                    const isNew = info.changed && info.prevValue === undefined && !Array.isArray(info.value);
+                    const isChanged = info.changed && !isNew;
+                    const cardClass = isNew ? 'var-card is-new' : isChanged ? 'var-card changed' : 'var-card';
+                    
+                    // Compute delta for numeric values
+                    let delta = null;
+                    if (isChanged && typeof info.prevValue === 'number' && typeof info.value === 'number') {
+                      delta = info.value - info.prevValue;
+                    }
+                    
+                    return (
+                      <div key={`${name}-${currentStep}`} className={cardClass}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: Array.isArray(info.value) ? 8 : 0, flexWrap: 'wrap' }}>
+                          <span style={{ color: t.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>
+                            {info.type || 'var'}
+                          </span>
+                          <span style={{ color: t.textBright, fontWeight: 600, fontSize: 14 }}>{name}</span>
+                          
+                          {/* NEW badge for freshly declared variables */}
+                          {isNew && (
+                            <span className="diff-pill new-var">NEW</span>
+                          )}
+                          
+                          {!Array.isArray(info.value) && (
+                            <>
+                              <span style={{ color: t.textDim }}>=</span>
+                              
+                              {/* Changed value — show diff pill */}
+                              {isChanged && info.prevValue !== undefined ? (
+                                <>
+                                  <span className="diff-pill value-change">
+                                    <span className="diff-old">
+                                      {typeof info.prevValue === 'string' ? `"${info.prevValue}"` : String(info.prevValue)}
+                                    </span>
+                                    <span className="diff-arrow">→</span>
+                                    <span className="diff-new">
+                                      {typeof info.value === 'string' ? `"${info.value}"` : String(info.value)}
+                                    </span>
+                                  </span>
+                                  {delta !== null && delta !== 0 && (
+                                    <span className={`diff-delta ${delta > 0 ? 'positive' : 'negative'}`}>
+                                      {delta > 0 ? '+' : ''}{delta}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                /* Unchanged or new value — show normally */
+                                <span style={{ color: isNew ? t.accent : t.tokType, fontWeight: 600, fontSize: 14 }}>
+                                  {typeof info.value === 'string' ? `"${info.value}"` : String(info.value)}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        
+                        {/* Array visualization */}
+                        {Array.isArray(info.value) && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                            {info.value.map((val, idx) => {
+                              const isIdxChanged = info.changedIndex === idx;
+                              const indexVars = Object.entries(currentVars).filter(
+                                ([n, v]) => !Array.isArray(v.value) && typeof v.value === 'number' && v.value === idx && n !== name
+                              );
+                              const isPointed = indexVars.length > 0;
+                              
+                              // Get previous value for this cell
+                              const prevArr = info.prevValue;
+                              const prevCellVal = Array.isArray(prevArr) && isIdxChanged ? prevArr[idx] : null;
+                              
+                              return (
+                                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                  <span style={{ fontSize: 10, color: t.textDim, fontFamily: "'DM Sans', sans-serif" }}>{idx}</span>
+                                  <div className={`array-cell ${isIdxChanged ? 'changed' : ''} ${isPointed ? 'highlight' : ''}`}>
+                                    {prevCellVal !== null && prevCellVal !== undefined && (
+                                      <span className="array-cell-prev">{prevCellVal}</span>
+                                    )}
+                                    {typeof val === 'string' ? `"${val}"` : val}
+                                  </div>
+                                  {isPointed && (
+                                    <span style={{ fontSize: 10, color: t.orange, fontWeight: 600 }}>
+                                      ↑ {indexVars.map(([n]) => n).join(',')}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            <div style={{ display: 'flex', alignItems: 'center', marginLeft: 8 }}>
+                              <span style={{ fontSize: 11, color: t.textDim, fontFamily: "'DM Sans', sans-serif" }}>.length = {info.value.length}</span>
+                            </div>
+                          </div>
                         )}
                       </div>
-                      
-                      {/* Array visualization */}
-                      {Array.isArray(info.value) && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                          {info.value.map((val, idx) => {
-                            const isChanged = info.changedIndex === idx;
-                            const indexVars = Object.entries(currentVars).filter(
-                              ([n, v]) => !Array.isArray(v.value) && typeof v.value === 'number' && v.value === idx && n !== name
-                            );
-                            const isPointed = indexVars.length > 0;
-                            
-                            return (
-                              <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                                <span style={{ fontSize: 10, color: t.textDim, fontFamily: "'DM Sans', sans-serif" }}>{idx}</span>
-                                <div className={`array-cell ${isChanged ? 'changed' : ''} ${isPointed ? 'highlight' : ''}`}>
-                                  {typeof val === 'string' ? `"${val}"` : val}
-                                </div>
-                                {isPointed && (
-                                  <span style={{ fontSize: 10, color: t.orange, fontWeight: 600 }}>
-                                    ↑ {indexVars.map(([n]) => n).join(',')}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                          <div style={{ display: 'flex', alignItems: 'center', marginLeft: 8 }}>
-                            <span style={{ fontSize: 11, color: t.textDim, fontFamily: "'DM Sans', sans-serif" }}>.length = {info.value.length}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )
             )}
@@ -3104,7 +3297,7 @@ export default function JavaCodeVisualizer() {
                       {inputPromptType === 'nextInt' ? 'Enter int:' :
                        inputPromptType === 'nextDouble' || inputPromptType === 'nextFloat' ? 'Enter number:' :
                        inputPromptType === 'nextBoolean' ? 'Enter boolean:' :
-                       'Enter input:'}
+                       'Enter Input:'}
                     </span>
                     <input
                       ref={inputRef}
